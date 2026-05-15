@@ -36,10 +36,10 @@ router.get("/", async (req, res) => {
       waterMl: e.waterMl ? parseFloat(e.waterMl) : null,
     }));
 
-    res.json(result);
+    return void res.json(result);
   } catch (err) {
     req.log.error({ err }, "Failed to get nutrition entries");
-    res.status(500).json({ error: "Interne serverfout" });
+    return void res.status(500).json({ error: "Interne serverfout" });
   }
 });
 
@@ -97,7 +97,7 @@ router.post("/", async (req, res) => {
       entry = created;
     }
 
-    res.status(201).json({
+    return void res.status(201).json({
       ...entry,
       kcal: entry.kcal ? parseFloat(entry.kcal) : null,
       eiwittenG: entry.eiwittenG ? parseFloat(entry.eiwittenG) : null,
@@ -107,7 +107,7 @@ router.post("/", async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "Failed to create nutrition entry");
-    res.status(500).json({ error: "Interne serverfout" });
+    return void res.status(500).json({ error: "Interne serverfout" });
   }
 });
 
@@ -143,7 +143,7 @@ router.put("/:id", async (req, res) => {
       return res.status(404).json({ error: "Voedingsinvoer niet gevonden" });
     }
 
-    res.json({
+    return void res.json({
       ...updated,
       kcal: updated.kcal ? parseFloat(updated.kcal) : null,
       eiwittenG: updated.eiwittenG ? parseFloat(updated.eiwittenG) : null,
@@ -153,7 +153,7 @@ router.put("/:id", async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "Failed to update nutrition entry");
-    res.status(500).json({ error: "Interne serverfout" });
+    return void res.status(500).json({ error: "Interne serverfout" });
   }
 });
 

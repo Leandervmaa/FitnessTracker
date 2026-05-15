@@ -1,17 +1,70 @@
 import { Link } from "wouter";
+import { useEffect, useState } from "react";
 import { useWeek } from "@/components/week-context";
 import { useListWeeks } from "@workspace/api-client-react";
-import { Dumbbell, Utensils, MessageSquare, ChevronDown } from "lucide-react";
+import { Dumbbell, Utensils, MessageSquare, ChevronDown, Settings, AlertCircle, CheckCircle2 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
+
+interface DataStatus {
+  source: "excel" | "demo";
+  excelFilePresent: boolean;
+  weeksLoaded?: number;
+}
+
+function useDataStatus() {
+  const [status, setStatus] = useState<DataStatus | null>(null);
+
+  useEffect(() => {
+    fetch("/api/data-status")
+      .then((r) => r.json())
+      .then(setStatus)
+      .catch(() => setStatus(null));
+  }, []);
+
+  return status;
+}
 
 export default function Home() {
   const { selectedWeek, setSelectedWeek } = useWeek();
   const { data: weeks } = useListWeeks();
+  const dataStatus = useDataStatus();
 
   return (
     <div className="min-h-[100dvh] w-full bg-background flex flex-col items-center p-6 pb-24 max-w-md mx-auto relative">
-      <div className="mt-8 mb-12 flex flex-col items-center">
+
+      {/* Header rij met settings knop */}
+      <div className="w-full flex justify-end mb-2 -mt-1">
+        <Link href="/instellen">
+          <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
+            <Settings className="h-5 w-5" />
+          </Button>
+        </Link>
+      </div>
+
+      {/* Databron banner */}
+      {dataStatus && (
+        <Link href="/instellen" className="w-full mb-4">
+          <div className={`w-full rounded-lg px-4 py-2.5 flex items-center gap-2.5 text-sm cursor-pointer transition-opacity hover:opacity-80 ${
+            dataStatus.source === "excel"
+              ? "bg-green-50 border border-green-200 text-green-800 dark:bg-green-950/30 dark:border-green-800 dark:text-green-300"
+              : "bg-amber-50 border border-amber-200 text-amber-800 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-300"
+          }`}>
+            {dataStatus.source === "excel" ? (
+              <CheckCircle2 className="h-4 w-4 shrink-0" />
+            ) : (
+              <AlertCircle className="h-4 w-4 shrink-0" />
+            )}
+            <span className="font-medium">
+              {dataStatus.source === "excel"
+                ? `Excel geladen — ${dataStatus.weeksLoaded} weken`
+                : "Demodata actief — upload Excel voor echte data"}
+            </span>
+          </div>
+        </Link>
+      )}
+
+      <div className="mt-4 mb-10 flex flex-col items-center">
         <div className="h-16 w-16 bg-primary rounded-full flex items-center justify-center mb-4 shadow-lg text-primary-foreground">
           <Dumbbell size={32} strokeWidth={2.5} />
         </div>
@@ -67,7 +120,7 @@ export default function Home() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
               {weeks.map(week => (
-                <DropdownMenuItem 
+                <DropdownMenuItem
                   key={week.weekNumber}
                   onClick={() => setSelectedWeek(week.weekNumber)}
                   className="font-medium flex justify-between"

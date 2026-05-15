@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { exerciseLogsTable } from "@workspace/db";
-import { getWorkoutById } from "../data/workoutProgram.js";
+import { getWorkoutById } from "../services/dataService.js";
 import { eq } from "drizzle-orm";
 
 const router = Router();
@@ -11,7 +11,7 @@ router.get("/:workoutId", async (req, res) => {
     const { workoutId } = req.params;
     const workout = getWorkoutById(workoutId);
 
-    if (!workout) return res.status(404).json({ error: "Training niet gevonden" });
+    if (!workout) return void res.status(404).json({ error: "Training niet gevonden" });
 
     const prevWeekNumber = workout.weekNumber - 1;
     const prevLogMap = new Map<string, typeof exerciseLogsTable.$inferSelect>();
@@ -41,7 +41,7 @@ router.get("/:workoutId", async (req, res) => {
       };
     });
 
-    res.json({
+    return void res.json({
       id: workout.id,
       weekNumber: workout.weekNumber,
       name: workout.name,
@@ -50,7 +50,7 @@ router.get("/:workoutId", async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "Failed to get workout");
-    res.status(500).json({ error: "Interne serverfout" });
+    return void res.status(500).json({ error: "Interne serverfout" });
   }
 });
 

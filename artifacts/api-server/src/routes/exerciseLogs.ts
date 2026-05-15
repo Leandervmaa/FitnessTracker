@@ -10,7 +10,7 @@ router.get("/", async (req, res) => {
   try {
     const parsed = GetExerciseLogsQueryParams.safeParse(req.query);
     if (!parsed.success) {
-      return res.status(400).json({ error: "Ongeldige parameters" });
+      return void res.status(400).json({ error: "Ongeldige parameters" });
     }
 
     const { exerciseId, weekNumber, workoutId } = parsed.data;
@@ -33,10 +33,10 @@ router.get("/", async (req, res) => {
       weight: l.weight ? parseFloat(l.weight) : null,
     }));
 
-    res.json(result);
+    return void res.json(result);
   } catch (err) {
     req.log.error({ err }, "Failed to get exercise logs");
-    res.status(500).json({ error: "Interne serverfout" });
+    return void res.status(500).json({ error: "Interne serverfout" });
   }
 });
 
@@ -44,7 +44,7 @@ router.post("/", async (req, res) => {
   try {
     const parsed = CreateExerciseLogBody.safeParse(req.body);
     if (!parsed.success) {
-      return res.status(400).json({ error: "Ongeldige invoer" });
+      return void res.status(400).json({ error: "Ongeldige invoer" });
     }
 
     const { exerciseId, workoutId, weekNumber, sets, reps, weight, notes } = parsed.data;
@@ -89,13 +89,13 @@ router.post("/", async (req, res) => {
       log = created;
     }
 
-    res.status(201).json({
+    return void res.status(201).json({
       ...log,
       weight: log.weight ? parseFloat(log.weight) : null,
     });
   } catch (err) {
     req.log.error({ err }, "Failed to create exercise log");
-    res.status(500).json({ error: "Interne serverfout" });
+    return void res.status(500).json({ error: "Interne serverfout" });
   }
 });
 
@@ -103,12 +103,12 @@ router.put("/:id", async (req, res) => {
   try {
     const paramsParsed = UpdateExerciseLogParams.safeParse(req.params);
     if (!paramsParsed.success) {
-      return res.status(400).json({ error: "Ongeldig ID" });
+      return void res.status(400).json({ error: "Ongeldig ID" });
     }
 
     const bodyParsed = UpdateExerciseLogBody.safeParse(req.body);
     if (!bodyParsed.success) {
-      return res.status(400).json({ error: "Ongeldige invoer" });
+      return void res.status(400).json({ error: "Ongeldige invoer" });
     }
 
     const { id } = paramsParsed.data;
@@ -126,16 +126,16 @@ router.put("/:id", async (req, res) => {
       .returning();
 
     if (!updated) {
-      return res.status(404).json({ error: "Log niet gevonden" });
+      return void res.status(404).json({ error: "Log niet gevonden" });
     }
 
-    res.json({
+    return void res.json({
       ...updated,
       weight: updated.weight ? parseFloat(updated.weight) : null,
     });
   } catch (err) {
     req.log.error({ err }, "Failed to update exercise log");
-    res.status(500).json({ error: "Interne serverfout" });
+    return void res.status(500).json({ error: "Interne serverfout" });
   }
 });
 

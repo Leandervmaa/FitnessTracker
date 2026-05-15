@@ -5,6 +5,8 @@ import workoutsRouter from "./workouts";
 import exerciseLogsRouter from "./exerciseLogs";
 import nutritionRouter from "./nutrition";
 import feedbackRouter, { feedbackQuestionsRouter } from "./feedback";
+import uploadRouter from "./upload";
+import dataStatusRouter from "./dataStatus";
 
 const router: IRouter = Router();
 
@@ -15,5 +17,7 @@ router.use("/exercise-logs", exerciseLogsRouter);
 router.use("/nutrition", nutritionRouter);
 router.use("/feedback-questions", feedbackQuestionsRouter);
 router.use("/feedback", feedbackRouter);
+router.use("/upload", uploadRouter);
+router.use("/data-status", dataStatusRouter);
 
 export default router;
