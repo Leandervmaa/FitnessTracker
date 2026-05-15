@@ -1,22 +1,30 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Fitness Tracker API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: weeks
+    description: Week management
+  - name: workouts
+    description: Training sessions
+  - name: exercises
+    description: Individual exercises
+  - name: nutrition
+    description: Daily nutrition entries
+  - name: feedback
+    description: Weekly feedback
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +32,283 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /weeks:
+    get:
+      operationId: listWeeks
+      tags: [weeks]
+      summary: List all weeks
+      responses:
+        "200":
+          description: List of weeks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Week"
+
+  /weeks/current:
+    get:
+      operationId: getCurrentWeek
+      tags: [weeks]
+      summary: Get the current active week (last incomplete)
+      responses:
+        "200":
+          description: Current week
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Week"
+
+  /weeks/{weekNumber}/workouts:
+    get:
+      operationId: getWorkoutsForWeek
+      tags: [workouts]
+      summary: Get the 4 workouts for a specific week
+      parameters:
+        - name: weekNumber
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Workouts for the week
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WorkoutSummary"
+
+  /weeks/{weekNumber}/workout-status:
+    get:
+      operationId: getWeekWorkoutStatus
+      tags: [workouts]
+      summary: Get completion status of exercises for a week
+      parameters:
+        - name: weekNumber
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Status map of exercise completion
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WeekWorkoutStatus"
+
+  /workouts/{workoutId}:
+    get:
+      operationId: getWorkout
+      tags: [workouts]
+      summary: Get a workout with all its exercises
+      parameters:
+        - name: workoutId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Workout with exercises
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workout"
+
+  /exercise-logs:
+    get:
+      operationId: getExerciseLogs
+      tags: [exercises]
+      summary: Get exercise logs for a specific exercise and week
+      parameters:
+        - name: exerciseId
+          in: query
+          schema:
+            type: string
+        - name: weekNumber
+          in: query
+          schema:
+            type: integer
+        - name: workoutId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Exercise logs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ExerciseLog"
+    post:
+      operationId: createExerciseLog
+      tags: [exercises]
+      summary: Log exercise completion data
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExerciseLogInput"
+      responses:
+        "201":
+          description: Created exercise log
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExerciseLog"
+
+  /exercise-logs/{id}:
+    put:
+      operationId: updateExerciseLog
+      tags: [exercises]
+      summary: Update an exercise log
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExerciseLogUpdate"
+      responses:
+        "200":
+          description: Updated exercise log
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExerciseLog"
+
+  /nutrition:
+    get:
+      operationId: getNutritionEntries
+      tags: [nutrition]
+      summary: Get nutrition entries
+      parameters:
+        - name: weekNumber
+          in: query
+          schema:
+            type: integer
+        - name: day
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Nutrition entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/NutritionEntry"
+    post:
+      operationId: createNutritionEntry
+      tags: [nutrition]
+      summary: Save a daily nutrition entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NutritionInput"
+      responses:
+        "201":
+          description: Created nutrition entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NutritionEntry"
+
+  /nutrition/{id}:
+    put:
+      operationId: updateNutritionEntry
+      tags: [nutrition]
+      summary: Update a nutrition entry
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NutritionUpdate"
+      responses:
+        "200":
+          description: Updated nutrition entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NutritionEntry"
+
+  /feedback-questions:
+    get:
+      operationId: getFeedbackQuestions
+      tags: [feedback]
+      summary: Get all feedback questions
+      responses:
+        "200":
+          description: Feedback questions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FeedbackQuestion"
+
+  /feedback:
+    get:
+      operationId: getFeedbackAnswers
+      tags: [feedback]
+      summary: Get feedback answers for a week
+      parameters:
+        - name: weekNumber
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Feedback answers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FeedbackAnswer"
+    post:
+      operationId: saveFeedbackAnswer
+      tags: [feedback]
+      summary: Save or update a feedback answer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FeedbackInput"
+      responses:
+        "201":
+          description: Saved feedback answer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedbackAnswer"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +319,297 @@ components:
       required:
         - status
 
+    Week:
+      type: object
+      properties:
+        weekNumber:
+          type: integer
+        label:
+          type: string
+        isComplete:
+          type: boolean
+        workoutsCompleted:
+          type: integer
+        nutritionDaysCompleted:
+          type: integer
+        feedbackCompleted:
+          type: boolean
+      required:
+        - weekNumber
+        - label
+        - isComplete
+        - workoutsCompleted
+        - nutritionDaysCompleted
+        - feedbackCompleted
+
+    WorkoutSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        weekNumber:
+          type: integer
+        name:
+          type: string
+        dayLabel:
+          type: string
+        exerciseCount:
+          type: integer
+        completedCount:
+          type: integer
+      required:
+        - id
+        - weekNumber
+        - name
+        - dayLabel
+        - exerciseCount
+        - completedCount
+
+    Workout:
+      type: object
+      properties:
+        id:
+          type: string
+        weekNumber:
+          type: integer
+        name:
+          type: string
+        dayLabel:
+          type: string
+        exercises:
+          type: array
+          items:
+            $ref: "#/components/schemas/Exercise"
+      required:
+        - id
+        - weekNumber
+        - name
+        - dayLabel
+        - exercises
+
+    Exercise:
+      type: object
+      properties:
+        id:
+          type: string
+        workoutId:
+          type: string
+        name:
+          type: string
+        sets:
+          type: ["integer", "null"]
+        reps:
+          type: ["string", "null"]
+        prescribedWeight:
+          type: ["number", "null"]
+        videoUrl:
+          type: ["string", "null"]
+        imageUrl:
+          type: ["string", "null"]
+        previousWeekSets:
+          type: ["integer", "null"]
+        previousWeekReps:
+          type: ["string", "null"]
+        previousWeekWeight:
+          type: ["number", "null"]
+        order:
+          type: integer
+      required:
+        - id
+        - workoutId
+        - name
+        - order
+
+    ExerciseLog:
+      type: object
+      properties:
+        id:
+          type: integer
+        exerciseId:
+          type: string
+        workoutId:
+          type: string
+        weekNumber:
+          type: integer
+        sets:
+          type: ["integer", "null"]
+        reps:
+          type: ["string", "null"]
+        weight:
+          type: ["number", "null"]
+        notes:
+          type: ["string", "null"]
+        completedAt:
+          type: string
+      required:
+        - id
+        - exerciseId
+        - workoutId
+        - weekNumber
+        - completedAt
+
+    ExerciseLogInput:
+      type: object
+      properties:
+        exerciseId:
+          type: string
+        workoutId:
+          type: string
+        weekNumber:
+          type: integer
+        sets:
+          type: ["integer", "null"]
+        reps:
+          type: ["string", "null"]
+        weight:
+          type: ["number", "null"]
+        notes:
+          type: ["string", "null"]
+      required:
+        - exerciseId
+        - workoutId
+        - weekNumber
+
+    ExerciseLogUpdate:
+      type: object
+      properties:
+        sets:
+          type: ["integer", "null"]
+        reps:
+          type: ["string", "null"]
+        weight:
+          type: ["number", "null"]
+        notes:
+          type: ["string", "null"]
+
+    NutritionEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+        weekNumber:
+          type: integer
+        day:
+          type: string
+        dayLabel:
+          type: string
+        kcal:
+          type: ["number", "null"]
+        eiwittenG:
+          type: ["number", "null"]
+        koolhydratenG:
+          type: ["number", "null"]
+        vetenG:
+          type: ["number", "null"]
+        waterMl:
+          type: ["number", "null"]
+        notes:
+          type: ["string", "null"]
+      required:
+        - id
+        - weekNumber
+        - day
+        - dayLabel
+
+    NutritionInput:
+      type: object
+      properties:
+        weekNumber:
+          type: integer
+        day:
+          type: string
+        dayLabel:
+          type: string
+        kcal:
+          type: ["number", "null"]
+        eiwittenG:
+          type: ["number", "null"]
+        koolhydratenG:
+          type: ["number", "null"]
+        vetenG:
+          type: ["number", "null"]
+        waterMl:
+          type: ["number", "null"]
+        notes:
+          type: ["string", "null"]
+      required:
+        - weekNumber
+        - day
+        - dayLabel
+
+    NutritionUpdate:
+      type: object
+      properties:
+        kcal:
+          type: ["number", "null"]
+        eiwittenG:
+          type: ["number", "null"]
+        koolhydratenG:
+          type: ["number", "null"]
+        vetenG:
+          type: ["number", "null"]
+        waterMl:
+          type: ["number", "null"]
+        notes:
+          type: ["string", "null"]
+
+    FeedbackQuestion:
+      type: object
+      properties:
+        id:
+          type: integer
+        question:
+          type: string
+        order:
+          type: integer
+      required:
+        - id
+        - question
+        - order
+
+    FeedbackAnswer:
+      type: object
+      properties:
+        id:
+          type: integer
+        weekNumber:
+          type: integer
+        questionId:
+          type: integer
+        answer:
+          type: string
+        answeredAt:
+          type: string
+      required:
+        - id
+        - weekNumber
+        - questionId
+        - answer
+        - answeredAt
+
+    FeedbackInput:
+      type: object
+      properties:
+        weekNumber:
+          type: integer
+        questionId:
+          type: integer
+        answer:
+          type: string
+      required:
+        - weekNumber
+        - questionId
+        - answer
+
+    WeekWorkoutStatus:
+      type: object
+      properties:
+        weekNumber:
+          type: integer
+        completedExerciseIds:
+          type: array
+          items:
+            type: string
+      required:
+        - weekNumber
+        - completedExerciseIds

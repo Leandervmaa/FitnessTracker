@@ -1,0 +1,20 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "fRbItcV1CZHqh0_vPM60j"
+uri = "file://artifacts/fitness-tracker/public/images/squat.png"
+type = "image"
+title = "squat illustration"
+
+[[generated]]
+id = "GUtpePdaAbTcYNjNj2bqF"
+uri = "file://artifacts/fitness-tracker/public/images/bench-press.png"
+type = "image"
+title = "bench press illustration"
+
+[[generated]]
+id = "9GTw0qp8c5hYa2_iF2H0Y"
+uri = "file://artifacts/fitness-tracker/public/images/deadlift.png"
+type = "image"
+title = "deadlift illustration"
