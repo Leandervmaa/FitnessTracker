@@ -1,3 +1,30 @@
+/**
+ * Parser voor het Bodyrebuild Programma Excel-bestand van Leander van Maarschalkerwaard.
+ *
+ * Tabbladnamen (met eventuele spaties):
+ *   "Progressie sheet", " Feedback Sporter", " Voedingplan ",
+ *   " UpperLower week 12", "UpperLower week 34", " UpperLower week 56",
+ *   " DELOAD week 7", "UpperLower week 89", " UpperLower week 1011",
+ *   "UpperLower week 1213", "DELOAD week 14"
+ *
+ * Structuur trainingstabblad (bijv. " UpperLower week 12"):
+ *   Rij: "Upper-Lower split | Datum: ..."          → separator, overslaan
+ *   Rij: "Week 1 | Oefening: | Bijzonderheden: | Set 1 | Set 2 | ... | Werk sets | Reps"
+ *        → weeknummer-header
+ *   Rij: "Training A (Upper) | A: Oefening | notities | s1 | s2 | ... | 3 | 8-10"
+ *        → start trainingsblok + eerste oefening
+ *   Volgende rijen: leeg col A, "B: Oefening" in col B → verdere oefeningen
+ *   Hyperlinks in col B → video-URL per oefening
+ *
+ * Kolom-indeling (0-gebaseerd):
+ *   0: Trainingsnaam (alleen eerste rij) of weekheader
+ *   1: Oefeningnaam met letterprefix "A:" → bevat hyperlink voor video-URL
+ *   2: Bijzonderheden/notities
+ *   3–7: Set 1–5 gewichten (eerder gelogd)
+ *   8: Werk sets
+ *   9: Reps
+ */
+
 import XLSX from "xlsx";
 import path from "path";
 import fs from "fs";
@@ -10,6 +37,7 @@ export const EXCEL_PATH = path.resolve(__dirname, "../data/programma.xlsx");
 export interface ParsedExercise {
   id: string;
   name: string;
+  notes: string | null;
   sets: number | null;
   reps: string | null;
   prescribedWeight: number | null;
@@ -41,293 +69,279 @@ export interface ParsedNutritionTarget {
   eiwitten: number | null;
   koolhydraten: number | null;
   vetten: number | null;
-  water: number | null;
+  waterL: number | null;
 }
 
 export interface ParsedExcelData {
   weeks: ParsedWeek[];
   feedbackQuestions: ParsedFeedbackQuestion[];
-  videoLinks: Map<string, string>;
-  nutritionTargets: Map<number, ParsedNutritionTarget>;
+  nutritionTarget: ParsedNutritionTarget | null;
   sheetNames: string[];
   parsedAt: Date;
 }
 
-function toStr(val: unknown): string | null {
-  if (val === undefined || val === null || val === "") return null;
-  const s = String(val).trim();
-  return s === "" || s === "-" || s === "n.v.t." ? null : s;
+// ─── helpers ────────────────────────────────────────────────────────────────
+
+function trimCell(v: unknown): string {
+  if (v === undefined || v === null) return "";
+  return String(v).trim();
 }
 
-function toNum(val: unknown): number | null {
-  if (val === undefined || val === null || val === "") return null;
-  if (typeof val === "number") return isNaN(val) ? null : val;
-  const s = String(val).replace(",", ".").replace(/[^\d.-]/g, "");
+function toNum(v: unknown): number | null {
+  const s = trimCell(v).replace(",", ".").replace(/[^\d.-]/g, "");
   const n = parseFloat(s);
   return isNaN(n) ? null : n;
 }
 
-function getSheet(wb: XLSX.WorkBook, name: string): string[][] | null {
-  const sheet = wb.Sheets[name];
-  if (!sheet) return null;
-  return XLSX.utils.sheet_to_json<string[]>(sheet, {
+/** Strip letter prefix "A: ", "B: " etc. from exercise name. */
+function stripLetterPrefix(name: string): string {
+  return name.replace(/^\s*[A-Za-z]\s*:\s*/, "").trim();
+}
+
+/** Extract hyperlink URL from a cell (column B contains embedded URLs). */
+function cellVideoUrl(sheet: XLSX.WorkSheet, cellAddr: string): string | null {
+  const cell = sheet[cellAddr];
+  if (!cell) return null;
+  const link = (cell as XLSX.CellObject & { l?: { Target?: string } }).l;
+  if (link?.Target && link.Target.startsWith("http")) return link.Target;
+  return null;
+}
+
+/** Find the last non-empty numeric value in a set of cols (D–H = indices 3–7). */
+function lastSetWeight(row: string[]): number | null {
+  let last: number | null = null;
+  for (let c = 3; c <= 7; c++) {
+    const n = toNum(row[c]);
+    if (n !== null) last = n;
+  }
+  return last;
+}
+
+/** Convert a row array to a column address string for a given row index and col. */
+function addr(colIdx: number, rowIdx: number): string {
+  return XLSX.utils.encode_cell({ c: colIdx, r: rowIdx });
+}
+
+// ─── training-sheet parser ───────────────────────────────────────────────────
+
+/**
+ * Parse one "UpperLower" or "DELOAD" sheet.
+ * Returns a map: weekNumber → array of ParsedWorkout.
+ */
+function parseTrainingSheet(
+  wb: XLSX.WorkBook,
+  sheetName: string
+): Map<number, ParsedWorkout[]> {
+  const sheet = wb.Sheets[sheetName];
+  if (!sheet) return new Map();
+
+  const rows: string[][] = XLSX.utils.sheet_to_json(sheet, {
     header: 1,
     defval: "",
     raw: false,
   });
-}
 
-function findSheetFuzzy(sheetNames: string[], pattern: RegExp): string | null {
-  return sheetNames.find((n) => pattern.test(n.toLowerCase())) ?? null;
-}
+  const result = new Map<number, ParsedWorkout[]>();
 
-/** Parse "Video links" tab: col A = exercise name, col B = URL */
-function parseVideoLinks(wb: XLSX.WorkBook): Map<string, string> {
-  const map = new Map<string, string>();
-  const sheetName =
-    findSheetFuzzy(wb.SheetNames, /video/) ?? "Video links";
-  const rows = getSheet(wb, sheetName);
-  if (!rows) return map;
+  let currentWeek: number | null = null;
+  let currentWorkout: ParsedWorkout | null = null;
+  let exerciseOrder = 0;
 
-  for (const row of rows) {
-    const name = toStr(row[0]);
-    const url = toStr(row[1]);
-    if (name && url && (url.includes("http") || url.includes("youtube"))) {
-      map.set(name.toLowerCase(), url);
-      map.set(name.toLowerCase().replace(/\s+/g, "-"), url);
-    }
-  }
-  return map;
-}
+  for (let ri = 0; ri < rows.length; ri++) {
+    const row = rows[ri];
+    const colA = trimCell(row[0]);
+    const colB = trimCell(row[1]);
 
-/** Parse "Feedback" tab: find rows that end in "?" */
-function parseFeedbackQuestions(wb: XLSX.WorkBook): ParsedFeedbackQuestion[] {
-  const sheetName =
-    findSheetFuzzy(wb.SheetNames, /feedback/) ?? "Feedback";
-  const rows = getSheet(wb, sheetName);
-  if (!rows) return DEFAULT_FEEDBACK_QUESTIONS;
+    // Skip empty rows and separator rows ("Upper-Lower split", title row)
+    if (!colA && !colB) continue;
+    if (/^upper.lower split/i.test(colA)) continue;
+    if (/^trainingsprogramma/i.test(colA)) continue;
 
-  const questions: ParsedFeedbackQuestion[] = [];
-  let order = 1;
-  for (const row of rows) {
-    for (const cell of row) {
-      const s = toStr(cell);
-      if (s && s.includes("?") && s.length > 10) {
-        questions.push({ id: order, question: s, order });
-        order++;
-        if (questions.length >= 4) break;
+    // Week header: "Week 1 | Oefening: | ..." OR "Week 2 | Datum: | ..."
+    if (/^week\s+\d+$/i.test(colA) && (colB === "" || /^(oefening|datum)/i.test(colB))) {
+      const match = colA.match(/\d+/);
+      if (match) {
+        // Save any running workout before switching week
+        if (currentWorkout && currentWorkout.exercises.length > 0 && currentWeek !== null) {
+          const list = result.get(currentWeek) ?? [];
+          list.push(currentWorkout);
+          result.set(currentWeek, list);
+          currentWorkout = null;
+        }
+        currentWeek = parseInt(match[0], 10);
       }
-    }
-    if (questions.length >= 4) break;
-  }
-  return questions.length > 0 ? questions : DEFAULT_FEEDBACK_QUESTIONS;
-}
-
-/** Parse "Voeding" tab for nutrition targets per week */
-function parseNutritionTargets(wb: XLSX.WorkBook): Map<number, ParsedNutritionTarget> {
-  const map = new Map<number, ParsedNutritionTarget>();
-  const sheetName =
-    findSheetFuzzy(wb.SheetNames, /voeding/) ?? "Voeding";
-  const rows = getSheet(wb, sheetName);
-  if (!rows) return map;
-
-  // Look for header row to find column positions
-  let kcalCol = -1, eiwitCol = -1, koolhCol = -1, vetCol = -1, waterCol = -1;
-  let headerRowIdx = -1;
-
-  for (let i = 0; i < Math.min(10, rows.length); i++) {
-    const row = rows[i].map((c) => String(c).toLowerCase());
-    const hasKcal = row.findIndex((c) => c.includes("kcal") || c.includes("calorie") || c.includes("energie"));
-    const hasEiwit = row.findIndex((c) => c.includes("eiwit") || c.includes("proteïne") || c.includes("protein"));
-    if (hasKcal >= 0 || hasEiwit >= 0) {
-      headerRowIdx = i;
-      kcalCol = hasKcal >= 0 ? hasKcal : row.findIndex(c => c.includes("kcal"));
-      eiwitCol = hasEiwit >= 0 ? hasEiwit : -1;
-      koolhCol = row.findIndex((c) => c.includes("koolh"));
-      vetCol = row.findIndex((c) => c.includes("vet") && !c.includes("eiwit"));
-      waterCol = row.findIndex((c) => c.includes("water"));
-      break;
-    }
-  }
-
-  // Parse data rows after header
-  const startRow = headerRowIdx >= 0 ? headerRowIdx + 1 : 1;
-  for (let i = startRow; i < rows.length; i++) {
-    const row = rows[i];
-    const weekCell = toStr(row[0]);
-    if (!weekCell) continue;
-
-    const weekMatch = weekCell.match(/\d+/);
-    if (!weekMatch) continue;
-    const weekNumber = parseInt(weekMatch[0], 10);
-    if (weekNumber < 1 || weekNumber > 12) continue;
-
-    map.set(weekNumber, {
-      kcal: kcalCol >= 0 ? toNum(row[kcalCol]) : toNum(row[1]),
-      eiwitten: eiwitCol >= 0 ? toNum(row[eiwitCol]) : toNum(row[2]),
-      koolhydraten: koolhCol >= 0 ? toNum(row[koolhCol]) : toNum(row[3]),
-      vetten: vetCol >= 0 ? toNum(row[vetCol]) : toNum(row[4]),
-      water: waterCol >= 0 ? toNum(row[waterCol]) : toNum(row[5]),
-    });
-  }
-  return map;
-}
-
-/** Detect column indices for exercises in a week tab */
-function detectColumns(rows: string[][]): {
-  nameCol: number;
-  setsCol: number;
-  repsCol: number;
-  weightCol: number;
-} {
-  for (let i = 0; i < Math.min(15, rows.length); i++) {
-    const row = rows[i].map((c) => String(c).toLowerCase());
-    const setsIdx = row.findIndex((c) => c === "sets" || c.includes("aantal sets"));
-    const repsIdx = row.findIndex(
-      (c) =>
-        c === "reps" ||
-        c.includes("herhaling") ||
-        c.includes("rep") ||
-        c === "herhalingen"
-    );
-    if (setsIdx >= 0 || repsIdx >= 0) {
-      const nameIdx = row.findIndex(
-        (c) => c.includes("oefening") || c.includes("exercise") || c.includes("naam")
-      );
-      const weightIdx = row.findIndex(
-        (c) =>
-          c.includes("gewicht") ||
-          c.includes("kg") ||
-          c.includes("load") ||
-          c === "kg"
-      );
-      return {
-        nameCol: nameIdx >= 0 ? nameIdx : 0,
-        setsCol: setsIdx >= 0 ? setsIdx : -1,
-        repsCol: repsIdx >= 0 ? repsIdx : -1,
-        weightCol: weightIdx >= 0 ? weightIdx : -1,
-      };
-    }
-  }
-  // Default: name=col0, sets=col1, reps=col2, weight=col3
-  return { nameCol: 0, setsCol: 1, repsCol: 2, weightCol: 3 };
-}
-
-const TRAINING_PATTERN =
-  /^(training\s*[a-d]|dag\s*[1-4]|maandag|dinsdag|woensdag|donderdag|vrijdag|zaterdag|zondag)\b/i;
-
-const SKIP_PATTERNS = [
-  /^(oefening|exercise|naam|#|sets?|reps?|herhaling|gewicht|kg|load|week|dag|training)\s*$/i,
-  /^-+$/,
-];
-
-function isTrainingHeader(cell: string): boolean {
-  return TRAINING_PATTERN.test(cell.trim());
-}
-
-function isSkip(cell: string): boolean {
-  return SKIP_PATTERNS.some((p) => p.test(cell.trim()));
-}
-
-function trainingLabel(cell: string): { name: string; dayLabel: string } {
-  const lower = cell.toLowerCase().trim();
-  const dayMap: Record<string, string> = {
-    maandag: "Maandag",
-    dinsdag: "Dinsdag",
-    woensdag: "Woensdag",
-    donderdag: "Donderdag",
-    vrijdag: "Vrijdag",
-    zaterdag: "Zaterdag",
-    zondag: "Zondag",
-  };
-  for (const [key, label] of Object.entries(dayMap)) {
-    if (lower.includes(key)) return { name: cell.trim(), dayLabel: label };
-  }
-  const letterMatch = cell.match(/\b([A-D])\b/i);
-  const letter = letterMatch ? letterMatch[1].toUpperCase() : "";
-  return {
-    name: letter ? `Training ${letter}` : cell.trim(),
-    dayLabel: letter ? `Training ${letter}` : cell.trim(),
-  };
-}
-
-/** Parse a single week sheet */
-function parseWeekSheet(
-  wb: XLSX.WorkBook,
-  sheetName: string,
-  weekNumber: number,
-  videoLinks: Map<string, string>
-): ParsedWorkout[] {
-  const rows = getSheet(wb, sheetName);
-  if (!rows || rows.length < 2) return [];
-
-  const cols = detectColumns(rows);
-  const workouts: ParsedWorkout[] = [];
-  let current: ParsedWorkout | null = null;
-  let exOrder = 0;
-
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
-    const firstCell = toStr(row[0]) ?? "";
-    if (!firstCell) continue;
-
-    if (isTrainingHeader(firstCell)) {
-      if (current && current.exercises.length > 0) workouts.push(current);
-      const { name, dayLabel } = trainingLabel(firstCell);
-      const suffix = name.match(/[A-D]$/i)?.[0]?.toUpperCase() ?? String(workouts.length + 1);
-      exOrder = 0;
-      current = {
-        id: `w${weekNumber}-${suffix}`,
-        name,
-        dayLabel,
-        exercises: [],
-      };
       continue;
     }
 
-    if (isSkip(firstCell) || !current) continue;
+    if (currentWeek === null) continue;
 
-    // Check if this is likely an exercise row (has name + numeric data)
-    const nameVal =
-      cols.nameCol === 0 ? firstCell : toStr(row[cols.nameCol]) ?? firstCell;
-    if (!nameVal || nameVal.length < 2) continue;
+    // Training block start: col A = "Training A (Upper)" etc.
+    if (/^training\s+[A-D]/i.test(colA)) {
+      // Save previous workout
+      if (currentWorkout && currentWorkout.exercises.length > 0) {
+        const list = result.get(currentWeek) ?? [];
+        list.push(currentWorkout);
+        result.set(currentWeek, list);
+      }
 
-    const setsVal = cols.setsCol >= 0 ? toNum(row[cols.setsCol]) : null;
-    const repsVal = cols.repsCol >= 0 ? toStr(row[cols.repsCol]) : null;
-    const weightVal = cols.weightCol >= 0 ? toNum(row[cols.weightCol]) : null;
+      const letterMatch = colA.match(/training\s+([A-D])/i);
+      const letter = letterMatch ? letterMatch[1].toUpperCase() : "X";
+      const isUpper = /upper/i.test(colA);
+      const isLower = /lower/i.test(colA);
+      const typeLabel = isUpper ? " (Upper)" : isLower ? " (Lower)" : "";
+      const dayMap: Record<string, string> = {
+        A: "Maandag", B: "Dinsdag", C: "Woensdag", D: "Donderdag",
+      };
 
-    // Skip rows that look like headers or empty data rows
-    if (!setsVal && !repsVal && !weightVal && nameVal.length > 30) continue;
+      currentWorkout = {
+        id: `w${currentWeek}-${letter}`,
+        name: `Training ${letter}${typeLabel}`,
+        dayLabel: dayMap[letter] ?? `Training ${letter}`,
+        exercises: [],
+      };
+      exerciseOrder = 0;
 
-    exOrder++;
-    const videoKey = nameVal.toLowerCase();
-    const videoUrl =
-      videoLinks.get(videoKey) ??
-      videoLinks.get(videoKey.replace(/\s+/g, "-")) ??
-      null;
+      // Week 1 pattern: first exercise is on the same row as training name
+      // Week 2+ pattern: col B is "Oefening:" (column header row) — exercises follow on next rows
+      if (colB && /^[A-Z]\s*:/i.test(colB)) {
+        const videoUrl = cellVideoUrl(sheet, addr(1, ri));
+        const sets = toNum(row[8]);
+        const reps = trimCell(row[9]) || null;
+        const weight = lastSetWeight(row);
 
-    current.exercises.push({
-      id: `w${weekNumber}-${current.id.split("-").pop()}-${exOrder}`,
-      name: nameVal,
-      sets: setsVal,
-      reps: repsVal,
-      prescribedWeight: weightVal,
-      videoUrl,
-      imageUrl: null,
-      order: exOrder,
-    });
+        exerciseOrder++;
+        currentWorkout.exercises.push({
+          id: `w${currentWeek}-${letter}-${exerciseOrder}`,
+          name: stripLetterPrefix(colB),
+          notes: trimCell(row[2]) || null,
+          sets,
+          reps,
+          prescribedWeight: weight,
+          videoUrl,
+          imageUrl: null,
+          order: exerciseOrder,
+        });
+      }
+      // If col B is "Oefening:" it's just a column header row — exercises come on next rows
+      continue;
+    }
+
+    // Exercise row: col A empty, col B has "X: Exercise name"
+    if (!colA && colB && /^[A-Z]\s*:/i.test(colB) && currentWorkout) {
+      // Skip "Opmerkingen" rows
+      if (/^opmerkingen/i.test(colB)) continue;
+
+      const videoUrl = cellVideoUrl(sheet, addr(1, ri));
+      const sets = toNum(row[8]);
+      const reps = trimCell(row[9]) || null;
+      const weight = lastSetWeight(row);
+
+      exerciseOrder++;
+      currentWorkout.exercises.push({
+        id: `w${currentWeek}-${currentWorkout.id.split("-").pop()}-${exerciseOrder}`,
+        name: stripLetterPrefix(colB),
+        notes: trimCell(row[2]) || null,
+        sets,
+        reps,
+        prescribedWeight: weight,
+        videoUrl,
+        imageUrl: null,
+        order: exerciseOrder,
+      });
+    }
   }
 
-  if (current && current.exercises.length > 0) workouts.push(current);
-  return workouts.slice(0, 4);
+  // Flush last workout
+  if (currentWorkout && currentWorkout.exercises.length > 0 && currentWeek !== null) {
+    const list = result.get(currentWeek) ?? [];
+    list.push(currentWorkout);
+    result.set(currentWeek, list);
+  }
+
+  return result;
 }
 
+// ─── feedback parser ─────────────────────────────────────────────────────────
+
+function parseFeedbackQuestions(wb: XLSX.WorkBook): ParsedFeedbackQuestion[] {
+  const sheetName = wb.SheetNames.find((n) =>
+    /feedback/i.test(n)
+  );
+  if (!sheetName) return DEFAULT_FEEDBACK_QUESTIONS;
+
+  const sheet = wb.Sheets[sheetName];
+  const rows: string[][] = XLSX.utils.sheet_to_json(sheet, {
+    header: 1,
+    defval: "",
+    raw: false,
+  });
+
+  const questions: ParsedFeedbackQuestion[] = [];
+
+  for (const row of rows) {
+    const cell = trimCell(row[0]);
+    // Questions are longer strings that end with "?"
+    if (cell.length > 10 && cell.endsWith("?")) {
+      const order = questions.length + 1;
+      questions.push({ id: order, question: cell, order });
+      if (questions.length >= 4) break;
+    }
+  }
+
+  return questions.length > 0 ? questions : DEFAULT_FEEDBACK_QUESTIONS;
+}
+
+// ─── voeding parser ───────────────────────────────────────────────────────────
+
+function parseNutritionTarget(wb: XLSX.WorkBook): ParsedNutritionTarget | null {
+  const sheetName = wb.SheetNames.find((n) => /voeding/i.test(n));
+  if (!sheetName) return null;
+
+  const sheet = wb.Sheets[sheetName];
+  const rows: string[][] = XLSX.utils.sheet_to_json(sheet, {
+    header: 1,
+    defval: "",
+    raw: false,
+  });
+
+  const result: ParsedNutritionTarget = {
+    kcal: null,
+    eiwitten: null,
+    koolhydraten: null,
+    vetten: null,
+    waterL: null,
+  };
+
+  for (const row of rows) {
+    const label = trimCell(row[0]).toLowerCase();
+    const value = trimCell(row[1]);
+
+    if (label.includes("kcal") || label.includes("calorie") || label.includes("energie")) {
+      result.kcal = toNum(value);
+    } else if (label.includes("eiwit") || label.includes("protein")) {
+      result.eiwitten = toNum(value);
+    } else if (label.includes("koolhydr")) {
+      result.koolhydraten = toNum(value);
+    } else if (label.includes("vet") && !label.includes("eiwit") && !label.includes("koolh")) {
+      result.vetten = toNum(value);
+    } else if (label.includes("water")) {
+      result.waterL = toNum(value);
+    }
+  }
+
+  return result.kcal !== null ? result : null;
+}
+
+// ─── defaults ────────────────────────────────────────────────────────────────
+
 const DEFAULT_FEEDBACK_QUESTIONS: ParsedFeedbackQuestion[] = [
-  { id: 1, question: "Hoe voelde je je deze week qua energie en herstel?", order: 1 },
-  { id: 2, question: "Welke training ging het beste en waarom?", order: 2 },
-  { id: 3, question: "Zijn er oefeningen waarbij je progressie hebt geboekt of die moeizamer gingen?", order: 3 },
-  { id: 4, question: "Wat wil je volgende week anders aanpakken of verbeteren?", order: 4 },
+  { id: 1, question: "Wat ging er goed deze week?", order: 1 },
+  { id: 2, question: "Wat kan er volgende week beter?", order: 2 },
+  { id: 3, question: "Welk advies zou je jezelf geven?", order: 3 },
+  { id: 4, question: "Hoe voelde je je deze week qua energie en herstel?", order: 4 },
 ];
+
+// ─── main export ─────────────────────────────────────────────────────────────
 
 export function parseExcelFile(filePath: string = EXCEL_PATH): ParsedExcelData | null {
   if (!fs.existsSync(filePath)) {
@@ -339,38 +353,43 @@ export function parseExcelFile(filePath: string = EXCEL_PATH): ParsedExcelData |
     const wb = XLSX.readFile(filePath);
     logger.info({ sheets: wb.SheetNames }, "Parsing Excel workbook");
 
-    const videoLinks = parseVideoLinks(wb);
-    const feedbackQuestions = parseFeedbackQuestions(wb);
-    const nutritionTargets = parseNutritionTargets(wb);
+    // Parse all training sheets
+    const allWeeks = new Map<number, ParsedWorkout[]>();
 
-    const weeks: ParsedWeek[] = [];
-    for (let w = 1; w <= 12; w++) {
-      const sheetName =
-        wb.SheetNames.find(
-          (n) =>
-            n.toLowerCase() === `week ${w}` ||
-            n.toLowerCase() === `week${w}` ||
-            n === String(w)
-        ) ?? null;
-
-      if (!sheetName) continue;
-
-      const workouts = parseWeekSheet(wb, sheetName, w, videoLinks);
-      if (workouts.length > 0) {
-        weeks.push({ weekNumber: w, workouts });
+    for (const sheetName of wb.SheetNames) {
+      const lower = sheetName.toLowerCase().trim();
+      if (
+        lower.includes("upperlower") ||
+        lower.includes("upper lower") ||
+        lower.includes("deload")
+      ) {
+        const weekMap = parseTrainingSheet(wb, sheetName);
+        for (const [weekNum, workouts] of weekMap) {
+          allWeeks.set(weekNum, workouts);
+        }
       }
     }
 
+    const weeks: ParsedWeek[] = Array.from(allWeeks.entries())
+      .sort(([a], [b]) => a - b)
+      .map(([weekNumber, workouts]) => ({ weekNumber, workouts }));
+
+    const feedbackQuestions = parseFeedbackQuestions(wb);
+    const nutritionTarget = parseNutritionTarget(wb);
+
     logger.info(
-      { weeksParsed: weeks.length, videoLinks: videoLinks.size, feedbackQ: feedbackQuestions.length },
+      {
+        weeksParsed: weeks.length,
+        feedbackQ: feedbackQuestions.length,
+        hasNutrition: nutritionTarget !== null,
+      },
       "Excel parse complete"
     );
 
     return {
       weeks,
       feedbackQuestions,
-      videoLinks,
-      nutritionTargets,
+      nutritionTarget,
       sheetNames: wb.SheetNames,
       parsedAt: new Date(),
     };

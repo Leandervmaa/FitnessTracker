@@ -123,10 +123,16 @@ export function getFeedbackQuestions(): ParsedFeedbackQuestion[] {
   ];
 }
 
-export function getNutritionTarget(weekNumber: number): { kcal: number | null; eiwitten: number | null; koolhydraten: number | null; vetten: number | null; water: number | null } | null {
+export function getNutritionTarget(_weekNumber: number): { kcal: number | null; eiwitten: number | null; koolhydraten: number | null; vetten: number | null; water: number | null } | null {
   const data = refreshIfNeeded();
-  if (data) {
-    return data.nutritionTargets.get(weekNumber) ?? null;
+  if (data?.nutritionTarget) {
+    return {
+      kcal: data.nutritionTarget.kcal,
+      eiwitten: data.nutritionTarget.eiwitten,
+      koolhydraten: data.nutritionTarget.koolhydraten,
+      vetten: data.nutritionTarget.vetten,
+      water: data.nutritionTarget.waterL,
+    };
   }
   return null;
 }

@@ -50,7 +50,6 @@ router.post("/excel", upload.single("file"), (req, res) => {
     tabbladen: result.sheetNames,
     wekenGeladen: result.weeks.length,
     feedbackVragen: result.feedbackQuestions.length,
-    videoLinks: result.videoLinks.size,
     parsedAt: result.parsedAt,
   });
 });
