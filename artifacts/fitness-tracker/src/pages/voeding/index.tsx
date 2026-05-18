@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useWeek } from "@/components/week-context";
+import { WeekSelector } from "@/components/week-selector";
 import { 
   useGetNutritionEntries, 
   useCreateNutritionEntry, 
@@ -83,8 +84,9 @@ export default function NutritionList() {
         </Button>
         <div className="flex-1 flex items-center">
           <Utensils className="w-5 h-5 text-primary mr-2" />
-          <h1 className="text-xl font-bold text-foreground">Week {selectedWeek} Voeding</h1>
+          <h1 className="text-xl font-bold text-foreground">Voeding</h1>
         </div>
+        <WeekSelector />
       </header>
 
       <div className="w-full p-4 flex flex-col">

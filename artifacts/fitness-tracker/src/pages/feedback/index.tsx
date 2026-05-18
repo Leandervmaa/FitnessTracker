@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useWeek } from "@/components/week-context";
+import { WeekSelector } from "@/components/week-selector";
 import { 
   useGetFeedbackQuestions, 
   useGetFeedbackAnswers,
@@ -94,9 +95,10 @@ export default function FeedbackList() {
           <ChevronLeft className="h-6 w-6" />
         </Button>
         <div className="flex-1">
-          <h1 className="text-xl font-bold text-foreground">Week {selectedWeek} Reflectie</h1>
+          <h1 className="text-xl font-bold text-foreground">Reflectie</h1>
           <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">Vraag {currentStep + 1} van {questions.length}</p>
         </div>
+        <WeekSelector />
       </header>
 
       <Progress value={progress} className="h-1 w-full rounded-none bg-secondary" />

@@ -5,6 +5,7 @@ import { ChevronLeft, CheckCircle2, PlayCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import { WeekSelector } from "@/components/week-selector";
 
 export default function TrainingList() {
   const { selectedWeek } = useWeek();
@@ -24,7 +25,8 @@ export default function TrainingList() {
         <Button variant="ghost" size="icon" onClick={() => setLocation("/")} className="mr-2">
           <ChevronLeft className="h-6 w-6" />
         </Button>
-        <h1 className="text-xl font-bold text-foreground">Week {selectedWeek} Trainingen</h1>
+        <h1 className="text-xl font-bold text-foreground flex-1">Trainingen</h1>
+        <WeekSelector />
       </header>
 
       <div className="w-full p-6 flex flex-col gap-4">
