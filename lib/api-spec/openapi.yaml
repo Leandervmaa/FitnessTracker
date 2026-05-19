@@ -401,7 +401,7 @@ components:
         reps:
           type: ["string", "null"]
         prescribedWeight:
-          type: ["number", "null"]
+          type: ["string", "null"]
         videoUrl:
           type: ["string", "null"]
         imageUrl:
@@ -411,7 +411,7 @@ components:
         previousWeekReps:
           type: ["string", "null"]
         previousWeekWeight:
-          type: ["number", "null"]
+          type: ["string", "null"]
         order:
           type: integer
       required:
@@ -436,7 +436,7 @@ components:
         reps:
           type: ["string", "null"]
         weight:
-          type: ["number", "null"]
+          type: ["string", "null"]
         notes:
           type: ["string", "null"]
         completedAt:
@@ -462,7 +462,7 @@ components:
         reps:
           type: ["string", "null"]
         weight:
-          type: ["number", "null"]
+          type: ["string", "null"]
         notes:
           type: ["string", "null"]
       required:
@@ -478,7 +478,7 @@ components:
         reps:
           type: ["string", "null"]
         weight:
-          type: ["number", "null"]
+          type: ["string", "null"]
         notes:
           type: ["string", "null"]
 

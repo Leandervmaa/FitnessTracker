@@ -27,7 +27,7 @@ export default function FeedbackList() {
   const { data: questions, isLoading: qLoading } = useGetFeedbackQuestions();
   const { data: answers, isLoading: aLoading } = useGetFeedbackAnswers(
     { weekNumber: selectedWeek || 0 },
-    { query: { enabled: !!selectedWeek } }
+    { query: { queryKey: getGetFeedbackAnswersQueryKey({ weekNumber: selectedWeek || 0 }), enabled: !!selectedWeek } }
   );
 
   const saveAnswer = useSaveFeedbackAnswer();

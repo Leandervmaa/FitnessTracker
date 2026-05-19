@@ -16,7 +16,7 @@ export interface ExerciseLog {
   /** @nullable */
   reps?: string | null;
   /** @nullable */
-  weight?: number | null;
+  weight?: string | null;
   /** @nullable */
   notes?: string | null;
   completedAt: string;

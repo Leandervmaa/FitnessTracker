@@ -37,7 +37,7 @@ router.get("/:workoutId", async (req, res) => {
         workoutId: workout.id,
         previousWeekSets: prevLog?.sets ?? null,
         previousWeekReps: prevLog?.reps ?? null,
-        previousWeekWeight: prevLog?.weight ? parseFloat(prevLog.weight) : null,
+        previousWeekWeight: prevLog?.weight ?? null,
       };
     });
 

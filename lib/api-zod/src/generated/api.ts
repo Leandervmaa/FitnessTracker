@@ -92,12 +92,12 @@ export const GetWorkoutResponse = zod.object({
   "name": zod.string(),
   "sets": zod.number().nullish(),
   "reps": zod.string().nullish(),
-  "prescribedWeight": zod.number().nullish(),
+  "prescribedWeight": zod.string().nullish(),
   "videoUrl": zod.string().nullish(),
   "imageUrl": zod.string().nullish(),
   "previousWeekSets": zod.number().nullish(),
   "previousWeekReps": zod.string().nullish(),
-  "previousWeekWeight": zod.number().nullish(),
+  "previousWeekWeight": zod.string().nullish(),
   "order": zod.number()
 }))
 })
@@ -119,7 +119,7 @@ export const GetExerciseLogsResponseItem = zod.object({
   "weekNumber": zod.number(),
   "sets": zod.number().nullish(),
   "reps": zod.string().nullish(),
-  "weight": zod.number().nullish(),
+  "weight": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "completedAt": zod.string()
 })
@@ -135,7 +135,7 @@ export const CreateExerciseLogBody = zod.object({
   "weekNumber": zod.number(),
   "sets": zod.number().nullish(),
   "reps": zod.string().nullish(),
-  "weight": zod.number().nullish(),
+  "weight": zod.string().nullish(),
   "notes": zod.string().nullish()
 })
 
@@ -150,7 +150,7 @@ export const UpdateExerciseLogParams = zod.object({
 export const UpdateExerciseLogBody = zod.object({
   "sets": zod.number().nullish(),
   "reps": zod.string().nullish(),
-  "weight": zod.number().nullish(),
+  "weight": zod.string().nullish(),
   "notes": zod.string().nullish()
 })
 
@@ -161,7 +161,7 @@ export const UpdateExerciseLogResponse = zod.object({
   "weekNumber": zod.number(),
   "sets": zod.number().nullish(),
   "reps": zod.string().nullish(),
-  "weight": zod.number().nullish(),
+  "weight": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "completedAt": zod.string()
 })

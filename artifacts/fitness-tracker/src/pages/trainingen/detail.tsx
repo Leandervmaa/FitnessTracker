@@ -6,6 +6,7 @@ import {
   useGetExerciseLogs,
   useCreateExerciseLog,
   useUpdateExerciseLog,
+  getGetExerciseLogsQueryKey,
   getGetWeekWorkoutStatusQueryKey,
   getGetWorkoutsForWeekQueryKey,
   ExerciseLog
@@ -28,7 +29,7 @@ export default function TrainingDetail() {
   const [isFinished, setIsFinished] = useState(false);
 
   const { data: workout, isLoading } = useGetWorkout(workoutId, {
-    query: { enabled: !!workoutId }
+    query: { queryKey: getGetWorkoutQueryKey(workoutId), enabled: !!workoutId }
   });
 
   const exercises = workout?.exercises || [];
@@ -36,26 +37,29 @@ export default function TrainingDetail() {
 
   const { data: logs } = useGetExerciseLogs(
     { workoutId, weekNumber: workout?.weekNumber },
-    { query: { enabled: !!workoutId && !!workout?.weekNumber } }
+    { query: { queryKey: getGetExerciseLogsQueryKey({ workoutId, weekNumber: workout?.weekNumber }), enabled: !!workoutId && !!workout?.weekNumber } }
   );
 
   const createLog = useCreateExerciseLog();
   const updateLog = useUpdateExerciseLog();
 
-  const [weight, setWeight] = useState("");
-  const [reps, setReps] = useState("");
+  const [weights, setWeights] = useState<string[]>([]);
+  const [repsList, setRepsList] = useState<string[]>([]);
   const [notes, setNotes] = useState("");
 
   const currentLog = logs?.find(l => l.exerciseId === exercise?.id);
 
   useEffect(() => {
+    const numSets = exercise?.sets || 1;
     if (currentLog) {
-      setWeight(currentLog.weight?.toString() || "");
-      setReps(currentLog.reps || "");
+      setWeights(currentLog.weight ? currentLog.weight.toString().split(',').map(s => s.trim()) : Array(numSets).fill(""));
+      setRepsList(currentLog.reps ? currentLog.reps.split(',').map(s => s.trim()) : Array(numSets).fill(""));
       setNotes(currentLog.notes || "");
     } else {
-      setWeight(exercise?.prescribedWeight?.toString() || "");
-      setReps(exercise?.reps || "");
+      const prevWeights = exercise?.previousWeekWeight ? exercise.previousWeekWeight.toString().split(',').map(s => s.trim()) : [];
+      const prevReps = exercise?.previousWeekReps ? exercise.previousWeekReps.toString().split(',').map(s => s.trim()) : [];
+      setWeights(Array(numSets).fill("").map((_, i) => prevWeights[i] || exercise?.prescribedWeight?.toString().split(',')[i]?.trim() || ""));
+      setRepsList(Array(numSets).fill("").map((_, i) => prevReps[i] || exercise?.reps?.split(',')[i]?.trim() || ""));
       setNotes("");
     }
   }, [currentLog, exercise]);
@@ -82,13 +86,16 @@ export default function TrainingDetail() {
   if (!exercise) return null;
 
   const handleNext = () => {
+    const finalWeights = weights.map(w => w.trim() === "" ? "0" : w).join(", ");
+    const finalReps = repsList.map(r => r.trim() === "" ? "0" : r).join(", ");
+
     const data = {
       exerciseId: exercise.id,
       workoutId: workout.id,
       weekNumber: workout.weekNumber,
       sets: exercise.sets,
-      reps: reps || null,
-      weight: weight ? parseFloat(weight) : null,
+      reps: finalReps,
+      weight: finalWeights,
       notes: notes || null
     };
 
@@ -187,29 +194,48 @@ export default function TrainingDetail() {
         )}
 
         <div className="flex flex-col gap-5">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label className="text-sm font-semibold">Gewicht (kg)</Label>
-              <Input 
-                type="number" 
-                inputMode="decimal"
-                value={weight} 
-                onChange={e => setWeight(e.target.value)} 
-                className="h-14 text-xl font-bold px-4 bg-card"
-                placeholder={exercise.prescribedWeight?.toString() || "0"}
-              />
+          {Array.from({ length: exercise.sets || 1 }).map((_, idx) => (
+            <div key={idx} className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold">Set {idx + 1} - Gewicht (kg)</Label>
+                <Input 
+                  type="number" 
+                  inputMode="decimal"
+                  value={weights[idx] || ""} 
+                  onChange={e => {
+                    const newWeights = [...weights];
+                    newWeights[idx] = e.target.value;
+                    setWeights(newWeights);
+                  }} 
+                  className="h-14 text-xl font-bold px-4 bg-card"
+                  placeholder={
+                    exercise.previousWeekWeight?.toString().split(',')[idx]?.trim() || 
+                    exercise.prescribedWeight?.toString().split(',')[idx]?.trim() || 
+                    "0"
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold">Set {idx + 1} - Reps</Label>
+                <Input 
+                  type="number"
+                  inputMode="decimal"
+                  value={repsList[idx] || ""} 
+                  onChange={e => {
+                    const newReps = [...repsList];
+                    newReps[idx] = e.target.value;
+                    setRepsList(newReps);
+                  }} 
+                  className="h-14 text-xl font-bold px-4 bg-card"
+                  placeholder={
+                    exercise.previousWeekReps?.toString().split(',')[idx]?.trim() || 
+                    exercise.reps?.toString().split(',')[idx]?.trim() || 
+                    "0"
+                  }
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label className="text-sm font-semibold">Reps voltooid</Label>
-              <Input 
-                type="text" 
-                value={reps} 
-                onChange={e => setReps(e.target.value)} 
-                className="h-14 text-xl font-bold px-4 bg-card"
-                placeholder={exercise.reps || "0"}
-              />
-            </div>
-          </div>
+          ))}
           <div className="space-y-2">
             <Label className="text-sm font-semibold">Notities (optioneel)</Label>
             <Textarea 

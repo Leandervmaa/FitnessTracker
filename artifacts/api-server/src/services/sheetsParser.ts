@@ -14,7 +14,7 @@ export interface SheetExercise {
   name: string;
   sets: number | null;
   reps: string | null;
-  prescribedWeight: number | null;
+  prescribedWeight: string | null;
   videoUrl: string | null;
   order: number;
 }
@@ -189,7 +189,7 @@ export async function getWeekWorkouts(
       const reps =
         repsCol >= 0 ? toStr(row[repsCol]) : toStr(row[2]);
       const weight =
-        weightCol >= 0 ? toNum(row[weightCol]) : toNum(row[3]);
+        weightCol >= 0 ? toStr(row[weightCol]) : toStr(row[3]);
 
       const videoKey = name.toLowerCase();
       const videoUrl =
@@ -260,29 +260,91 @@ export async function getNutritionTargets(
   return null;
 }
 
-/** Write exercise log to Logboek tab */
 export async function writeExerciseLogToSheet(
   weekNumber: number,
   trainingName: string,
   exerciseName: string,
   sets: number | null,
   reps: string | null,
-  weight: number | null,
+  weight: string | null,
   notes: string | null
 ): Promise<void> {
-  const { appendRow } = await import("./sheetsService.js");
-  const now = new Date().toLocaleDateString("nl-NL");
-  await appendRow("Logboek!A:G", [
+  const { appendRow, readRange, writeRange } = await import("./sheetsService.js");
+  
+  const weightArr = weight ? weight.split(',').map(s => s.trim()) : [];
+  const repsArr = reps ? reps.split(',').map(s => s.trim()) : [];
+  
+  // 1. Log to Logboek with weights in separate columns
+  await appendRow("Logboek!A:Z", [
     [
       String(weekNumber),
       trainingName,
       exerciseName,
       sets !== null ? String(sets) : "",
-      reps || "",
-      weight !== null ? String(weight) : "",
+      repsArr.join(", "),
       notes || "",
+      ...weightArr
     ],
   ]);
+
+  // 2. Try to update the exact row in the Week tab
+  try {
+    const sheetName = `Week ${weekNumber}`;
+    const data = await readRange(`${sheetName}!A1:Z200`);
+    if (!data) return;
+
+    let headerRowIndex = -1;
+    let setCols: number[] = [];
+    let repsCol = -1;
+
+    for (let i = 0; i < Math.min(10, data.length); i++) {
+      const row = data[i].map((c) => c?.toLowerCase() || "");
+      if (row.some(c => c.includes("set"))) {
+        headerRowIndex = i;
+        for (let j = 0; j < row.length; j++) {
+          if (row[j].match(/set\s*\d/)) setCols.push(j);
+          if (row[j] === "reps") repsCol = j;
+        }
+        break;
+      }
+    }
+
+    if (setCols.length === 0) setCols = [3, 4, 5, 6, 7];
+
+    let exerciseRowIndex = -1;
+    for (let i = headerRowIndex + 1; i < data.length; i++) {
+      const row = data[i];
+      const cellA = (row[0] || "").toLowerCase().replace(/^[a-z]\s*:/, "").trim();
+      const cellB = (row[1] || "").toLowerCase().replace(/^[a-z]\s*:/, "").trim();
+      const target = exerciseName.toLowerCase().replace(/^[a-z]\s*:/, "").trim();
+
+      if (cellA === target || cellB === target) {
+        exerciseRowIndex = i;
+        break;
+      }
+    }
+
+    if (exerciseRowIndex >= 0) {
+      const rowToUpdate = [...data[exerciseRowIndex]];
+      const maxCol = Math.max(...setCols, repsCol);
+      while(rowToUpdate.length <= maxCol) {
+        rowToUpdate.push("");
+      }
+
+      for (let i = 0; i < weightArr.length && i < setCols.length; i++) {
+        rowToUpdate[setCols[i]] = weightArr[i];
+      }
+      
+      if (repsCol >= 0) {
+        rowToUpdate[repsCol] = repsArr.join(", ");
+      }
+
+      const rowNum = exerciseRowIndex + 1;
+      await writeRange(`${sheetName}!A${rowNum}:Z${rowNum}`, [rowToUpdate]);
+    }
+  } catch (err) {
+    logger.error({ err }, "Failed to update week tab");
+  }
 }
 
 /** Write feedback answer to Feedback tab */

@@ -37,7 +37,7 @@ export default function NutritionList() {
 
   const { data: entries } = useGetNutritionEntries(
     { weekNumber: selectedWeek || 0 },
-    { query: { enabled: !!selectedWeek } }
+    { query: { queryKey: getGetNutritionEntriesQueryKey({ weekNumber: selectedWeek || 0 }), enabled: !!selectedWeek } }
   );
 
   const createEntry = useCreateNutritionEntry();

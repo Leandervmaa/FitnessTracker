@@ -36,7 +36,7 @@ export interface Exercise {
   /** @nullable */
   reps?: string | null;
   /** @nullable */
-  prescribedWeight?: number | null;
+  prescribedWeight?: string | null;
   /** @nullable */
   videoUrl?: string | null;
   /** @nullable */
@@ -46,7 +46,7 @@ export interface Exercise {
   /** @nullable */
   previousWeekReps?: string | null;
   /** @nullable */
-  previousWeekWeight?: number | null;
+  previousWeekWeight?: string | null;
   order: number;
 }
 
@@ -68,7 +68,7 @@ export interface ExerciseLog {
   /** @nullable */
   reps?: string | null;
   /** @nullable */
-  weight?: number | null;
+  weight?: string | null;
   /** @nullable */
   notes?: string | null;
   completedAt: string;
@@ -83,7 +83,7 @@ export interface ExerciseLogInput {
   /** @nullable */
   reps?: string | null;
   /** @nullable */
-  weight?: number | null;
+  weight?: string | null;
   /** @nullable */
   notes?: string | null;
 }
@@ -94,7 +94,7 @@ export interface ExerciseLogUpdate {
   /** @nullable */
   reps?: string | null;
   /** @nullable */
-  weight?: number | null;
+  weight?: string | null;
   /** @nullable */
   notes?: string | null;
 }

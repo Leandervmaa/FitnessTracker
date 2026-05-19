@@ -9,7 +9,7 @@ export const exerciseLogsTable = pgTable("exercise_logs", {
   weekNumber: integer("week_number").notNull(),
   sets: integer("sets"),
   reps: text("reps"),
-  weight: numeric("weight", { precision: 6, scale: 2 }),
+  weight: text("weight"),
   notes: text("notes"),
   completedAt: timestamp("completed_at", { withTimezone: true }).notNull().defaultNow(),
 });

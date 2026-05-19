@@ -25,7 +25,7 @@ export interface ParsedExercise {
   notes: string | null;
   sets: number | null;
   reps: string | null;
-  prescribedWeight: number | null;
+  prescribedWeight: string | null;
   videoUrl: string | null;
   imageUrl: string | null;
   order: number;
@@ -131,11 +131,11 @@ function detectColMap(row: string[]): ColMap {
 /**
  * Get the last non-empty numeric weight from the set columns (dynamic range).
  */
-function lastSetWeight(row: string[], colMap: ColMap): number | null {
-  let last: number | null = null;
+function lastSetWeight(row: string[], colMap: ColMap): string | null {
+  let last: string | null = null;
   for (let c = colMap.setStart; c <= colMap.setEnd; c++) {
-    const n = toNum(row[c]);
-    if (n !== null) last = n;
+    const s = trimCell(row[c]);
+    if (s !== "") last = s;
   }
   return last;
 }

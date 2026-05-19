@@ -15,7 +15,7 @@ export interface Exercise {
   /** @nullable */
   reps?: string | null;
   /** @nullable */
-  prescribedWeight?: number | null;
+  prescribedWeight?: string | null;
   /** @nullable */
   videoUrl?: string | null;
   /** @nullable */
@@ -25,6 +25,6 @@ export interface Exercise {
   /** @nullable */
   previousWeekReps?: string | null;
   /** @nullable */
-  previousWeekWeight?: number | null;
+  previousWeekWeight?: string | null;
   order: number;
 }

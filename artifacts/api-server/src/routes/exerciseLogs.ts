@@ -3,6 +3,8 @@ import { db } from "@workspace/db";
 import { exerciseLogsTable } from "@workspace/db";
 import { CreateExerciseLogBody, UpdateExerciseLogBody, UpdateExerciseLogParams, GetExerciseLogsQueryParams } from "@workspace/api-zod";
 import { eq, and } from "drizzle-orm";
+import { getWorkoutById } from "../services/dataService.js";
+import { writeExerciseLogToSheet } from "../services/sheetsParser.js";
 
 const router = Router();
 
@@ -27,13 +29,7 @@ router.get("/", async (req, res) => {
     }
 
     const logs = await query;
-
-    const result = logs.map((l) => ({
-      ...l,
-      weight: l.weight ? parseFloat(l.weight) : null,
-    }));
-
-    return void res.json(result);
+    return void res.json(logs);
   } catch (err) {
     req.log.error({ err }, "Failed to get exercise logs");
     return void res.status(500).json({ error: "Interne serverfout" });
@@ -67,7 +63,7 @@ router.post("/", async (req, res) => {
         .set({
           sets: sets ?? null,
           reps: reps ?? null,
-          weight: weight !== undefined && weight !== null ? String(weight) : null,
+          weight: weight ?? null,
           notes: notes ?? null,
         })
         .where(eq(exerciseLogsTable.id, existing[0].id))
@@ -82,17 +78,23 @@ router.post("/", async (req, res) => {
           weekNumber,
           sets: sets ?? null,
           reps: reps ?? null,
-          weight: weight !== undefined && weight !== null ? String(weight) : null,
+          weight: weight ?? null,
           notes: notes ?? null,
         })
         .returning();
       log = created;
     }
 
-    return void res.status(201).json({
-      ...log,
-      weight: log.weight ? parseFloat(log.weight) : null,
-    });
+    try {
+      const workout = getWorkoutById(workoutId);
+      const exerciseName = workout?.exercises.find(e => e.id === exerciseId)?.name || exerciseId;
+      const workoutName = workout?.name || workoutId;
+      await writeExerciseLogToSheet(weekNumber, workoutName, exerciseName, sets ?? null, reps ?? null, log.weight, notes ?? null);
+    } catch (e) {
+      req.log.warn({ err: e }, "Failed to write to sheets");
+    }
+
+    return void res.status(201).json(log);
   } catch (err) {
     req.log.error({ err }, "Failed to create exercise log");
     return void res.status(500).json({ error: "Interne serverfout" });
@@ -119,7 +121,7 @@ router.put("/:id", async (req, res) => {
       .set({
         sets: sets ?? null,
         reps: reps ?? null,
-        weight: weight !== undefined && weight !== null ? String(weight) : null,
+        weight: weight ?? null,
         notes: notes ?? null,
       })
       .where(eq(exerciseLogsTable.id, id))
@@ -129,10 +131,16 @@ router.put("/:id", async (req, res) => {
       return void res.status(404).json({ error: "Log niet gevonden" });
     }
 
-    return void res.json({
-      ...updated,
-      weight: updated.weight ? parseFloat(updated.weight) : null,
-    });
+    try {
+      const workout = getWorkoutById(updated.workoutId);
+      const exerciseName = workout?.exercises.find(e => e.id === updated.exerciseId)?.name || updated.exerciseId;
+      const workoutName = workout?.name || updated.workoutId;
+      await writeExerciseLogToSheet(updated.weekNumber, workoutName, exerciseName, updated.sets ?? null, updated.reps ?? null, updated.weight, updated.notes ?? null);
+    } catch (e) {
+      req.log.warn({ err: e }, "Failed to write to sheets");
+    }
+
+    return void res.json(updated);
   } catch (err) {
     req.log.error({ err }, "Failed to update exercise log");
     return void res.status(500).json({ error: "Interne serverfout" });

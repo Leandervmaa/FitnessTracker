@@ -1,5 +1,5 @@
 import { useWeek } from "@/components/week-context";
-import { useGetWorkoutsForWeek, useGetWeekWorkoutStatus } from "@workspace/api-client-react";
+import { useGetWorkoutsForWeek, useGetWeekWorkoutStatus, getGetWorkoutsForWeekQueryKey, getGetWeekWorkoutStatusQueryKey } from "@workspace/api-client-react";
 import { Link, useLocation } from "wouter";
 import { ChevronLeft, CheckCircle2, PlayCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -12,11 +12,11 @@ export default function TrainingList() {
   const [, setLocation] = useLocation();
 
   const { data: workouts, isLoading } = useGetWorkoutsForWeek(selectedWeek || 0, {
-    query: { enabled: !!selectedWeek }
+    query: { queryKey: getGetWorkoutsForWeekQueryKey(selectedWeek || 0), enabled: !!selectedWeek }
   });
 
   const { data: status } = useGetWeekWorkoutStatus(selectedWeek || 0, {
-    query: { enabled: !!selectedWeek }
+    query: { queryKey: getGetWeekWorkoutStatusQueryKey(selectedWeek || 0), enabled: !!selectedWeek }
   });
 
   return (
