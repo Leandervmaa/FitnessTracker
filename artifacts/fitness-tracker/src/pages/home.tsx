@@ -65,9 +65,7 @@ export default function Home() {
       )}
 
       <div className="mt-4 mb-10 flex flex-col items-center">
-        <div className="h-16 w-16 bg-primary rounded-full flex items-center justify-center mb-4 shadow-lg text-primary-foreground">
-          <Dumbbell size={32} strokeWidth={2.5} />
-        </div>
+        <img src="/images/logo.png" alt="Bodyrebuild Logo" className="h-20 w-20 object-contain mb-4 drop-shadow-md" />
         <h1 className="text-2xl font-bold tracking-tight text-foreground">Mijn Fitness Tracker</h1>
       </div>
 

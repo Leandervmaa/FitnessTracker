@@ -22,4 +22,10 @@ app.listen(port, (err) => {
   }
 
   logger.info({ port }, "Server listening");
+  
+  import("./services/syncService.js").then(({ syncAllLogs }) => {
+    syncAllLogs().catch(err => {
+      logger.error({ err }, "Initial sync failed");
+    });
+  });
 });
