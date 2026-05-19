@@ -2,8 +2,9 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { feedbackQuestionsTable, feedbackAnswersTable } from "@workspace/db";
 import { SaveFeedbackAnswerBody, GetFeedbackAnswersQueryParams } from "@workspace/api-zod";
-import { getFeedbackQuestions } from "../services/dataService.js";
+import { getFeedbackQuestions, getFeedbackAnswers } from "../services/dataService.js";
 import { eq, and } from "drizzle-orm";
+import { logger } from "../lib/logger.js";
 
 const router = Router();
 
@@ -40,6 +41,31 @@ feedbackQuestionsRouter.get("/", async (req, res) => {
   }
 });
 
+async function syncAnswersForWeek(weekNumber: number) {
+  try {
+    const excelAnswers = getFeedbackAnswers().filter((a) => a.weekNumber === weekNumber);
+    if (excelAnswers.length === 0) return;
+
+    const existing = await db
+      .select()
+      .from(feedbackAnswersTable)
+      .where(eq(feedbackAnswersTable.weekNumber, weekNumber));
+
+    for (const ea of excelAnswers) {
+      const hasDbAnswer = existing.some((dbAns) => dbAns.questionId === ea.questionId);
+      if (!hasDbAnswer) {
+        await db.insert(feedbackAnswersTable).values({
+          weekNumber,
+          questionId: ea.questionId,
+          answer: ea.answer,
+        });
+      }
+    }
+  } catch (err) {
+    logger.error({ err, weekNumber }, "Failed to sync feedback answers from Excel");
+  }
+}
+
 router.get("/", async (req, res) => {
   try {
     const parsed = GetFeedbackAnswersQueryParams.safeParse(req.query);
@@ -47,6 +73,7 @@ router.get("/", async (req, res) => {
       return void res.status(400).json({ error: "Weeknummer is vereist" });
     }
     const { weekNumber } = parsed.data;
+    await syncAnswersForWeek(weekNumber);
     const answers = await db
       .select()
       .from(feedbackAnswersTable)

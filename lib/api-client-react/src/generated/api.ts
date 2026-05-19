@@ -32,6 +32,7 @@ import type {
   HealthStatus,
   NutritionEntry,
   NutritionInput,
+  NutritionTarget,
   NutritionUpdate,
   Week,
   WeekWorkoutStatus,
@@ -894,6 +895,83 @@ export const useCreateNutritionEntry = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getCreateNutritionEntryMutationOptions(options));
     }
+
+export const getGetNutritionTargetUrl = () => {
+
+
+
+
+  return `/api/nutrition/target`
+}
+
+/**
+ * @summary Get the target nutrition values
+ */
+export const getNutritionTarget = async ( options?: RequestInit): Promise<NutritionTarget> => {
+
+  return customFetch<NutritionTarget>(getGetNutritionTargetUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetNutritionTargetQueryKey = () => {
+    return [
+    `/api/nutrition/target`
+    ] as const;
+    }
+
+
+export const getGetNutritionTargetQueryOptions = <TData = Awaited<ReturnType<typeof getNutritionTarget>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getNutritionTarget>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetNutritionTargetQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getNutritionTarget>>> = ({ signal }) => getNutritionTarget({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getNutritionTarget>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetNutritionTargetQueryResult = NonNullable<Awaited<ReturnType<typeof getNutritionTarget>>>
+export type GetNutritionTargetQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get the target nutrition values
+ */
+
+export function useGetNutritionTarget<TData = Awaited<ReturnType<typeof getNutritionTarget>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getNutritionTarget>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetNutritionTargetQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getUpdateNutritionEntryUrl = (id: number,) => {
 

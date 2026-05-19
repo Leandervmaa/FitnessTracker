@@ -208,6 +208,18 @@ export const CreateNutritionEntryBody = zod.object({
 
 
 /**
+ * @summary Get the target nutrition values
+ */
+export const GetNutritionTargetResponse = zod.object({
+  "kcal": zod.number().nullable(),
+  "eiwittenG": zod.number().nullable(),
+  "koolhydratenG": zod.number().nullable(),
+  "vetenG": zod.number().nullable(),
+  "waterMl": zod.number().nullable()
+})
+
+
+/**
  * @summary Update a nutrition entry
  */
 export const UpdateNutritionEntryParams = zod.object({

@@ -19,6 +19,7 @@ export * from './getNutritionEntriesParams';
 export * from './healthStatus';
 export * from './nutritionEntry';
 export * from './nutritionInput';
+export * from './nutritionTarget';
 export * from './nutritionUpdate';
 export * from './week';
 export * from './weekWorkoutStatus';

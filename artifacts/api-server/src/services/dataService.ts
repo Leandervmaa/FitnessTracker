@@ -3,7 +3,7 @@
  * Tries to load from uploaded Excel file first.
  * Falls back to hardcoded workoutProgram.ts when file is absent.
  */
-import { parseExcelFile, EXCEL_PATH, type ParsedExcelData, type ParsedWorkout, type ParsedExercise, type ParsedFeedbackQuestion } from "./excelParser.js";
+import { parseExcelFile, EXCEL_PATH, type ParsedExcelData, type ParsedWorkout, type ParsedExercise, type ParsedFeedbackQuestion, type ParsedFeedbackAnswer } from "./excelParser.js";
 import { getWeekProgram, getAllWeeks, getWorkoutById as getWorkoutByIdHardcoded, type WorkoutDefinition, type ExerciseDefinition } from "../data/workoutProgram.js";
 import { logger } from "../lib/logger.js";
 import fs from "fs";
@@ -122,6 +122,14 @@ export function getFeedbackQuestions(): ParsedFeedbackQuestion[] {
     { id: 3, question: "Zijn er oefeningen waarbij je progressie hebt geboekt of die moeizamer gingen?", order: 3 },
     { id: 4, question: "Wat wil je volgende week anders aanpakken of verbeteren?", order: 4 },
   ];
+}
+
+export function getFeedbackAnswers(): ParsedFeedbackAnswer[] {
+  const data = refreshIfNeeded();
+  if (data && data.feedbackAnswers.length > 0) {
+    return data.feedbackAnswers;
+  }
+  return [];
 }
 
 export function getNutritionTarget(_weekNumber: number): { kcal: number | null; eiwitten: number | null; koolhydraten: number | null; vetten: number | null; water: number | null } | null {

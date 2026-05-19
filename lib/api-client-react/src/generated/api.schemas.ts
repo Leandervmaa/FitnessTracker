@@ -178,6 +178,19 @@ export interface WeekWorkoutStatus {
   completedExerciseIds: string[];
 }
 
+export interface NutritionTarget {
+  /** @nullable */
+  kcal: number | null;
+  /** @nullable */
+  eiwittenG: number | null;
+  /** @nullable */
+  koolhydratenG: number | null;
+  /** @nullable */
+  vetenG: number | null;
+  /** @nullable */
+  waterMl: number | null;
+}
+
 export type GetExerciseLogsParams = {
 exerciseId?: string;
 weekNumber?: number;

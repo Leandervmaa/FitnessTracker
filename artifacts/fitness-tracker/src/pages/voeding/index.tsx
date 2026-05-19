@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useWeek } from "@/components/week-context";
 import { WeekSelector } from "@/components/week-selector";
 import { 
   useGetNutritionEntries, 
   useCreateNutritionEntry, 
   useUpdateNutritionEntry,
+  useGetNutritionTarget,
   getGetNutritionEntriesQueryKey
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -34,6 +35,8 @@ export default function NutritionList() {
   const { toast } = useToast();
   
   const [activeDay, setActiveDay] = useState(DAYS[0].id);
+
+  const { data: target } = useGetNutritionTarget();
 
   const { data: entries } = useGetNutritionEntries(
     { weekNumber: selectedWeek || 0 },
@@ -89,6 +92,41 @@ export default function NutritionList() {
         <WeekSelector />
       </header>
 
+      {target && (
+        <div className="w-full px-4 pt-4">
+          <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+            <h3 className="text-xs font-bold text-muted-foreground mb-3 flex items-center gap-1.5 uppercase tracking-wider">
+              <span className="h-2 w-2 rounded-full bg-primary animate-pulse" />
+              Doelstellingen Voedingsplan
+            </h3>
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div className="bg-secondary/40 border border-border/60 rounded-lg p-2.5 flex flex-col">
+                <span className="text-[10px] text-muted-foreground font-bold uppercase">Energie</span>
+                <span className="text-base font-black text-foreground mt-0.5">{target.kcal} kcal</span>
+              </div>
+              <div className="bg-secondary/40 border border-border/60 rounded-lg p-2.5 flex flex-col">
+                <span className="text-[10px] text-muted-foreground font-bold uppercase">Water</span>
+                <span className="text-base font-black text-foreground mt-0.5">{target.waterMl ? target.waterMl / 1000 : 0} L</span>
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="bg-secondary/20 border border-border/40 rounded-lg p-2 text-center">
+                <div className="text-[9px] text-primary font-bold uppercase">Eiwit</div>
+                <div className="text-xs font-extrabold mt-0.5">{target.eiwittenG}g</div>
+              </div>
+              <div className="bg-secondary/20 border border-border/40 rounded-lg p-2 text-center">
+                <div className="text-[9px] text-orange-500 font-bold uppercase">Koolhydraten</div>
+                <div className="text-xs font-extrabold mt-0.5">{target.koolhydratenG}g</div>
+              </div>
+              <div className="bg-secondary/20 border border-border/40 rounded-lg p-2 text-center">
+                <div className="text-[9px] text-amber-500 font-bold uppercase">Vetten</div>
+                <div className="text-xs font-extrabold mt-0.5">{target.vetenG}g</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="w-full p-4 flex flex-col">
         <Tabs value={activeDay} onValueChange={setActiveDay} className="w-full">
           <TabsList className="w-full h-12 p-1 mb-6 flex bg-secondary">
@@ -110,6 +148,7 @@ export default function NutritionList() {
                 <NutritionDayForm 
                   day={day} 
                   entry={entry} 
+                  target={target}
                   onSave={(data) => handleSave(day.id, data)} 
                   isSaving={createEntry.isPending || updateEntry.isPending}
                 />
@@ -122,7 +161,7 @@ export default function NutritionList() {
   );
 }
 
-function NutritionDayForm({ day, entry, onSave, isSaving }: { day: any, entry?: any, onSave: (data: any) => void, isSaving: boolean }) {
+function NutritionDayForm({ day, entry, target, onSave, isSaving }: { day: any, entry?: any, target?: any, onSave: (data: any) => void, isSaving: boolean }) {
   const [formData, setFormData] = useState({
     kcal: entry?.kcal?.toString() || "",
     eiwittenG: entry?.eiwittenG?.toString() || "",
@@ -131,6 +170,17 @@ function NutritionDayForm({ day, entry, onSave, isSaving }: { day: any, entry?: 
     waterMl: entry?.waterMl?.toString() || "",
     notes: entry?.notes || ""
   });
+
+  useEffect(() => {
+    setFormData({
+      kcal: entry?.kcal?.toString() || "",
+      eiwittenG: entry?.eiwittenG?.toString() || "",
+      koolhydratenG: entry?.koolhydratenG?.toString() || "",
+      vetenG: entry?.vetenG?.toString() || "",
+      waterMl: entry?.waterMl?.toString() || "",
+      notes: entry?.notes || ""
+    });
+  }, [entry]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
@@ -143,7 +193,8 @@ function NutritionDayForm({ day, entry, onSave, isSaving }: { day: any, entry?: 
         <Input 
           type="number" inputMode="numeric"
           name="kcal" value={formData.kcal} onChange={handleChange}
-          className="h-14 text-xl font-bold px-4" placeholder="Bijv. 2500"
+          className="h-14 text-xl font-bold px-4" 
+          placeholder={target?.kcal ? `Doel: ${target.kcal} kcal` : "Bijv. 2500"}
         />
       </div>
 
@@ -153,7 +204,8 @@ function NutritionDayForm({ day, entry, onSave, isSaving }: { day: any, entry?: 
           <Input 
             type="number" inputMode="numeric"
             name="eiwittenG" value={formData.eiwittenG} onChange={handleChange}
-            className="h-12 text-center font-bold" placeholder="0"
+            className="h-12 text-center font-bold" 
+            placeholder={target?.eiwittenG ? `${target.eiwittenG}g` : "0"}
           />
         </div>
         <div className="space-y-2">
@@ -161,7 +213,8 @@ function NutritionDayForm({ day, entry, onSave, isSaving }: { day: any, entry?: 
           <Input 
             type="number" inputMode="numeric"
             name="koolhydratenG" value={formData.koolhydratenG} onChange={handleChange}
-            className="h-12 text-center font-bold" placeholder="0"
+            className="h-12 text-center font-bold" 
+            placeholder={target?.koolhydratenG ? `${target.koolhydratenG}g` : "0"}
           />
         </div>
         <div className="space-y-2">
@@ -169,7 +222,8 @@ function NutritionDayForm({ day, entry, onSave, isSaving }: { day: any, entry?: 
           <Input 
             type="number" inputMode="numeric"
             name="vetenG" value={formData.vetenG} onChange={handleChange}
-            className="h-12 text-center font-bold" placeholder="0"
+            className="h-12 text-center font-bold" 
+            placeholder={target?.vetenG ? `${target.vetenG}g` : "0"}
           />
         </div>
       </div>
@@ -179,7 +233,8 @@ function NutritionDayForm({ day, entry, onSave, isSaving }: { day: any, entry?: 
         <Input 
           type="number" inputMode="numeric"
           name="waterMl" value={formData.waterMl} onChange={handleChange}
-          className="h-12 px-4" placeholder="Bijv. 3000"
+          className="h-12 px-4" 
+          placeholder={target?.waterMl ? `Doel: ${target.waterMl} ml` : "Bijv. 3000"}
         />
       </div>
 

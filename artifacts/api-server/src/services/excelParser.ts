@@ -57,9 +57,16 @@ export interface ParsedNutritionTarget {
   waterL: number | null;
 }
 
+export interface ParsedFeedbackAnswer {
+  weekNumber: number;
+  questionId: number;
+  answer: string;
+}
+
 export interface ParsedExcelData {
   weeks: ParsedWeek[];
   feedbackQuestions: ParsedFeedbackQuestion[];
+  feedbackAnswers: ParsedFeedbackAnswer[];
   nutritionTarget: ParsedNutritionTarget | null;
   sheetNames: string[];
   parsedAt: Date;
@@ -325,6 +332,70 @@ function parseFeedbackQuestions(wb: XLSX.WorkBook): ParsedFeedbackQuestion[] {
   return questions.length > 0 ? questions : DEFAULT_FEEDBACK_QUESTIONS;
 }
 
+function parseFeedbackAnswers(wb: XLSX.WorkBook, questions: ParsedFeedbackQuestion[]): ParsedFeedbackAnswer[] {
+  const sheetName = wb.SheetNames.find((n) => /feedback/i.test(n));
+  if (!sheetName) return [];
+
+  const sheet = wb.Sheets[sheetName];
+  const rows: string[][] = XLSX.utils.sheet_to_json(sheet, {
+    header: 1,
+    defval: "",
+    raw: false,
+  });
+
+  const answers: ParsedFeedbackAnswer[] = [];
+  let currentWeekNum: number | null = null;
+  let currentQuestionId: number | null = null;
+  const currentLines: string[] = [];
+
+  const saveCurrentAnswer = () => {
+    if (currentWeekNum !== null && currentQuestionId !== null && currentLines.length > 0) {
+      const joined = currentLines.join("\n").trim();
+      if (joined) {
+        answers.push({
+          weekNumber: currentWeekNum,
+          questionId: currentQuestionId,
+          answer: joined,
+        });
+      }
+    }
+    currentLines.length = 0;
+  };
+
+  for (const row of rows) {
+    const cellValue = trimCell(row[0]);
+    if (!cellValue) continue;
+
+    // Check for Week header (e.g. "Week 1:")
+    const weekMatch = cellValue.match(/^week\s+(\d+)\s*:/i);
+    if (weekMatch) {
+      saveCurrentAnswer();
+      currentWeekNum = parseInt(weekMatch[1], 10);
+      currentQuestionId = null;
+      continue;
+    }
+
+    // Check if cell matches a question
+    const lower = cellValue.toLowerCase();
+    const matchedQ = questions.find((q) => q.question.toLowerCase() === lower);
+    if (matchedQ) {
+      saveCurrentAnswer();
+      currentQuestionId = matchedQ.id;
+      continue;
+    }
+
+    // If we are currently tracking a week and a question, accumulate the text
+    if (currentWeekNum !== null && currentQuestionId !== null) {
+      currentLines.push(cellValue);
+    }
+  }
+
+  // Save the last one
+  saveCurrentAnswer();
+
+  return answers;
+}
+
 // ─── voeding parser ───────────────────────────────────────────────────────────
 
 function parseNutritionTarget(wb: XLSX.WorkBook): ParsedNutritionTarget | null {
@@ -351,15 +422,15 @@ function parseNutritionTarget(wb: XLSX.WorkBook): ParsedNutritionTarget | null {
     const value = trimCell(row[1]);
 
     if (label.includes("kcal") || label.includes("calorie") || label.includes("energie")) {
-      result.kcal = toNum(value);
+      if (result.kcal === null) result.kcal = toNum(value);
     } else if (label.includes("eiwit") || label.includes("protein")) {
-      result.eiwitten = toNum(value);
+      if (result.eiwitten === null) result.eiwitten = toNum(value);
     } else if (label.includes("koolhydr")) {
-      result.koolhydraten = toNum(value);
+      if (result.koolhydraten === null) result.koolhydraten = toNum(value);
     } else if (label.includes("vet") && !label.includes("eiwit") && !label.includes("koolh")) {
-      result.vetten = toNum(value);
+      if (result.vetten === null) result.vetten = toNum(value);
     } else if (label.includes("water")) {
-      result.waterL = toNum(value);
+      if (result.waterL === null) result.waterL = toNum(value);
     }
   }
 
@@ -407,16 +478,23 @@ export function parseExcelFile(filePath: string = EXCEL_PATH): ParsedExcelData |
     inheritVideoUrls(weeks);
 
     const feedbackQuestions = parseFeedbackQuestions(wb);
+    const feedbackAnswers = parseFeedbackAnswers(wb, feedbackQuestions);
     const nutritionTarget = parseNutritionTarget(wb);
 
     logger.info(
-      { weeksParsed: weeks.length, feedbackQ: feedbackQuestions.length, hasNutrition: nutritionTarget !== null },
+      {
+        weeksParsed: weeks.length,
+        feedbackQ: feedbackQuestions.length,
+        feedbackA: feedbackAnswers.length,
+        hasNutrition: nutritionTarget !== null,
+      },
       "Excel parse complete"
     );
 
     return {
       weeks,
       feedbackQuestions,
+      feedbackAnswers,
       nutritionTarget,
       sheetNames: wb.SheetNames,
       parsedAt: new Date(),

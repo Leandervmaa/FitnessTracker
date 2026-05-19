@@ -231,6 +231,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/NutritionEntry"
 
+  /nutrition/target:
+    get:
+      operationId: getNutritionTarget
+      tags: [nutrition]
+      summary: Get the target nutrition values
+      responses:
+        "200":
+          description: Nutrition target
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NutritionTarget"
+
   /nutrition/{id}:
     put:
       operationId: updateNutritionEntry
@@ -615,3 +628,23 @@ components:
       required:
         - weekNumber
         - completedExerciseIds
+
+    NutritionTarget:
+      type: object
+      properties:
+        kcal:
+          type: ["number", "null"]
+        eiwittenG:
+          type: ["number", "null"]
+        koolhydratenG:
+          type: ["number", "null"]
+        vetenG:
+          type: ["number", "null"]
+        waterMl:
+          type: ["number", "null"]
+      required:
+        - kcal
+        - eiwittenG
+        - koolhydratenG
+        - vetenG
+        - waterMl

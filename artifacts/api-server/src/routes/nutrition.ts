@@ -2,9 +2,30 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { nutritionEntriesTable } from "@workspace/db";
 import { CreateNutritionEntryBody, UpdateNutritionEntryBody, UpdateNutritionEntryParams, GetNutritionEntriesQueryParams } from "@workspace/api-zod";
+import { getNutritionTarget } from "../services/dataService.js";
 import { eq, and } from "drizzle-orm";
 
 const router = Router();
+
+router.get("/target", async (req, res) => {
+  try {
+    const target = getNutritionTarget(1);
+    if (!target) {
+      return res.status(404).json({ error: "Geen voedingsdoelen gevonden" });
+    }
+    // Map to camelCase format expected by generated client types (waterL -> waterMl, etc.)
+    return void res.json({
+      kcal: target.kcal,
+      eiwittenG: target.eiwitten,
+      koolhydratenG: target.koolhydraten,
+      vetenG: target.vetten,
+      waterMl: target.water ? target.water * 1000 : null, // Convert liters to ml!
+    });
+  } catch (err) {
+    req.log.error({ err }, "Failed to get nutrition target");
+    return void res.status(500).json({ error: "Interne serverfout" });
+  }
+});
 
 router.get("/", async (req, res) => {
   try {
