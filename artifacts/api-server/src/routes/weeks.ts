@@ -60,7 +60,7 @@ router.get("/current", async (req, res) => {
     for (const weekNumber of allWeekNumbers) {
       const summary = await buildWeekSummary(weekNumber);
       currentWeek = weekNumber;
-      if (!summary.isComplete) break;
+      if (summary.workoutsCompleted < TOTAL_WORKOUTS) break;
     }
 
     const summary = await buildWeekSummary(currentWeek);
