@@ -406,6 +406,8 @@ components:
           type: ["string", "null"]
         imageUrl:
           type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
         previousWeekSets:
           type: ["integer", "null"]
         previousWeekReps:

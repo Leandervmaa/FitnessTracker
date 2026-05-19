@@ -12,6 +12,7 @@ import { logger } from "../lib/logger.js";
 export interface SheetExercise {
   id: string;
   name: string;
+  notes: string | null;
   sets: number | null;
   reps: string | null;
   prescribedWeight: string | null;
@@ -118,6 +119,7 @@ export async function getWeekWorkouts(
   let setsCol = -1;
   let repsCol = -1;
   let weightCol = -1;
+  let notesCol = -1;
 
   // Look for header row
   for (let i = 0; i < Math.min(5, data.length); i++) {
@@ -129,10 +131,14 @@ export async function getWeekWorkouts(
     const weightIdx = row.findIndex(
       (c) => c.includes("gewicht") || c.includes("kg") || c.includes("load")
     );
+    const notesIdx = row.findIndex(
+      (c) => c.includes("bijzonderheden") || c.includes("opmerking") || c.includes("note")
+    );
     if (setsIdx >= 0 || repsIdx >= 0) {
       setsCol = setsIdx;
       repsCol = repsIdx;
       weightCol = weightIdx;
+      notesCol = notesIdx;
       break;
     }
   }
@@ -190,6 +196,8 @@ export async function getWeekWorkouts(
         repsCol >= 0 ? toStr(row[repsCol]) : toStr(row[2]);
       const weight =
         weightCol >= 0 ? toStr(row[weightCol]) : toStr(row[3]);
+      const notes =
+        notesCol >= 0 ? toStr(row[notesCol]) : toStr(row[2]);
 
       const videoKey = name.toLowerCase();
       const videoUrl =
@@ -201,6 +209,7 @@ export async function getWeekWorkouts(
       currentWorkout.exercises.push({
         id: exerciseId,
         name,
+        notes,
         sets,
         reps,
         prescribedWeight: weight,

@@ -95,6 +95,7 @@ export const GetWorkoutResponse = zod.object({
   "prescribedWeight": zod.string().nullish(),
   "videoUrl": zod.string().nullish(),
   "imageUrl": zod.string().nullish(),
+  "notes": zod.string().nullish(),
   "previousWeekSets": zod.number().nullish(),
   "previousWeekReps": zod.string().nullish(),
   "previousWeekWeight": zod.string().nullish(),

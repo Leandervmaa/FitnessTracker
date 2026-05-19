@@ -1,6 +1,7 @@
 export interface ExerciseDefinition {
   id: string;
   name: string;
+  notes?: string | null;
   sets: number | null;
   reps: string | null;
   prescribedWeight: string | null;

@@ -56,6 +56,7 @@ function toExerciseDef(e: ParsedExercise): ExerciseDefinition {
   return {
     id: e.id,
     name: e.name,
+    notes: e.notes,
     sets: e.sets,
     reps: e.reps,
     prescribedWeight: e.prescribedWeight,

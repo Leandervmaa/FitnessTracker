@@ -42,6 +42,8 @@ export interface Exercise {
   /** @nullable */
   imageUrl?: string | null;
   /** @nullable */
+  notes?: string | null;
+  /** @nullable */
   previousWeekSets?: number | null;
   /** @nullable */
   previousWeekReps?: string | null;

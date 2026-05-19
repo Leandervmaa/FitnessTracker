@@ -242,7 +242,7 @@ export default function TrainingDetail() {
               value={notes} 
               onChange={e => setNotes(e.target.value)} 
               className="resize-none bg-card"
-              placeholder="Bijv: voelde zwaar, techniek verbeteren..."
+              placeholder={exercise.notes || "Bijv: voelde zwaar, techniek verbeteren..."}
             />
           </div>
         </div>
