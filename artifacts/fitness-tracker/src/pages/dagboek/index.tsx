@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
+import FoodTracker, { useFoodLogs } from "@/components/food-tracker";
 
 const DAYS = [
   { id: "mon", label: "Ma", nl: "Maandag" },
@@ -217,6 +218,7 @@ export default function DagboekPage() {
               <TabsContent key={day.id} value={day.id} className="mt-0">
                 <DagForm
                   day={day}
+                  weekNumber={selectedWeek!}
                   entry={entry}
                   sheetDay={sheetDay ?? null}
                   onSave={(data) => handleSave(day.id, data)}
@@ -244,8 +246,9 @@ function parseEntry(entry: any) {
   return { metrics, notes };
 }
 
-function DagForm({ day, entry, sheetDay, onSave, isSaving }: {
+function DagForm({ day, weekNumber, entry, sheetDay, onSave, isSaving }: {
   day: { id: string; label: string; nl: string };
+  weekNumber: number;
   entry?: any;
   sheetDay: any | null;
   onSave: (data: any) => void;
@@ -340,16 +343,15 @@ function DagForm({ day, entry, sheetDay, onSave, isSaving }: {
 
       {/* Sectie: Voeding */}
       <div>
-        <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Voeding</p>
-        <div className="space-y-1.5">
-          <Label className="text-xs font-semibold">Calorieën (kcal)</Label>
-          <Input
-            type="number" inputMode="numeric" name="kcal"
-            value={formData.kcal} onChange={handleChange}
-            className="h-14 text-xl font-bold px-4"
-            placeholder={ph(sheetDay?.kcal, " kcal") || "Bijv. 2200"}
-          />
-        </div>
+        <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">Voeding</p>
+        {/* Sheet reference */}
+        {sheetDay?.kcal != null && (
+          <p className="text-[10px] text-muted-foreground mb-3">
+            📋 Spreadsheet-waarde: <span className="font-bold">{sheetDay.kcal} kcal</span>
+          </p>
+        )}
+        {/* FatSecret tracker */}
+        <FoodTracker weekNumber={weekNumber} day={day.id} dayLabel={day.nl} />
       </div>
 
       {/* Sectie: Welzijn */}
