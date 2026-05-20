@@ -10,6 +10,7 @@ import dataStatusRouter from "./dataStatus";
 import exportRouter from "./export";
 import progressPhotosRouter from "./progressPhotos";
 import foodRouter from "./food";
+import syncRouter from "./sync";
 
 const router: IRouter = Router();
 
@@ -25,5 +26,6 @@ router.use("/data-status", dataStatusRouter);
 router.use("/export", exportRouter);
 router.use("/progress-photos", progressPhotosRouter);
 router.use("/food", foodRouter);
+router.use("/sync", syncRouter);
 
 export default router;

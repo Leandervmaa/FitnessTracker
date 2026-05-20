@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { WeekProvider } from "@/components/week-context";
+import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 import NotFound from "@/pages/not-found";
 
 import Home from "@/pages/home";
@@ -14,7 +15,21 @@ import Instellen from "@/pages/instellen/index";
 import ExcelViewer from "@/pages/excel-viewer";
 import ProgressieFotos from "@/pages/progressie-fotos/index";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // Refetch on window/tab focus (user switches back to app)
+      refetchOnWindowFocus: true,
+      // Refetch when component remounts
+      refetchOnMount: true,
+      // Keep data fresh for 30 seconds, then mark stale
+      staleTime: 30_000,
+      // Retry failed requests twice before showing error
+      retry: 2,
+      retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10_000),
+    },
+  },
+});
 
 function Router() {
   return (
@@ -32,12 +47,19 @@ function Router() {
   );
 }
 
+/** Activates SSE connection — must be inside QueryClientProvider */
+function RealtimeSyncBridge() {
+  useRealtimeSync();
+  return null;
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <WeekProvider>
           <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+            <RealtimeSyncBridge />
             <Router />
           </WouterRouter>
         </WeekProvider>

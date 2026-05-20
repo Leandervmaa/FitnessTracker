@@ -26,8 +26,8 @@ interface Photo {
   uploadedAt: string;
 }
 
-function photoUrl(filename: string) {
-  return `/api/progress-photos/file/${encodeURIComponent(filename)}`;
+function photoUrl(photo: Photo) {
+  return `/api/progress-photos/image/${photo.id}`;
 }
 
 function useAllPhotos() {
@@ -252,7 +252,7 @@ function PhotoSlot({ weekNumber, angle, label, photo }: {
       {photo ? (
         <div className="relative w-full group">
           <img
-            src={photoUrl(photo.filename)}
+            src={photoUrl(photo)}
             alt={`Week ${weekNumber} ${label}`}
             className="w-full aspect-[3/4] object-cover"
           />
@@ -374,7 +374,7 @@ function CompareView({ photos, weekA, weekB, onChangeA, onChangeB }: {
                     <div key={week} className="relative rounded-xl overflow-hidden border border-border bg-secondary/30 aspect-[3/4]">
                       {photo ? (
                         <img
-                          src={photoUrl(photo.filename)}
+                          src={photoUrl(photo)}
                           alt={`Week ${week} ${angle.label}`}
                           className="w-full h-full object-cover"
                         />

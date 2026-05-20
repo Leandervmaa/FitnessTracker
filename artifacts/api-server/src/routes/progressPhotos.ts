@@ -1,37 +1,34 @@
+/**
+ * progressPhotos.ts
+ *
+ * Stores progress photos as base64 data in PostgreSQL (photo_data column).
+ * This ensures photos are persistent and available across ALL devices,
+ * even after Replit server restarts or deployments.
+ *
+ * Photos are served via GET /api/progress-photos/image/:id (by record ID).
+ */
+
 import { Router } from "express";
 import multer from "multer";
-import path from "path";
-import fs from "fs";
-import { fileURLToPath } from "url";
 import { db } from "@workspace/db";
 import { progressPhotosTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
+import { notifyClients } from "./sync.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-// Store photos in a dedicated directory under the server's data folder
-const PHOTOS_DIR = path.resolve(__dirname, "../data/progress-photos");
-if (!fs.existsSync(PHOTOS_DIR)) {
-  fs.mkdirSync(PHOTOS_DIR, { recursive: true });
-}
-
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, PHOTOS_DIR),
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase() || ".jpg";
-    const unique = `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`;
-    cb(null, unique);
-  },
-});
-
+// Memory storage — save directly to DB as base64, no filesystem needed
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   fileFilter: (_req, file, cb) => {
-    const ok = /^image\/(jpeg|png|webp|heic|heif)$/i.test(file.mimetype) ||
+    const ok =
+      /^image\/(jpeg|png|webp|heic|heif)$/i.test(file.mimetype) ||
       /\.(jpg|jpeg|png|webp|heic|heif)$/i.test(file.originalname);
-    cb(null, ok);
+    if (ok) {
+      cb(null, true);
+    } else {
+      cb(new Error("Alleen afbeeldingen zijn toegestaan"));
+    }
   },
-  limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB max per photo
+  limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB max
 });
 
 const router = Router();
@@ -39,20 +36,34 @@ const router = Router();
 const VALID_ANGLES = ["front", "side", "back"] as const;
 type Angle = typeof VALID_ANGLES[number];
 
-/** GET /api/progress-photos?weekNumber=1 — list photos, optionally filtered by week */
+// Columns to return in listings (exclude binary photo_data for performance)
+const listColumns = {
+  id:         progressPhotosTable.id,
+  weekNumber: progressPhotosTable.weekNumber,
+  angle:      progressPhotosTable.angle,
+  filename:   progressPhotosTable.filename,
+  mimeType:   progressPhotosTable.mimeType,
+  uploadedAt: progressPhotosTable.uploadedAt,
+};
+
+/** GET /api/progress-photos?weekNumber=1 — list photos (metadata only, no binary) */
 router.get("/", async (req, res) => {
   try {
-    let query = db.select().from(progressPhotosTable).$dynamic();
-
     const weekParam = req.query.weekNumber;
+
     if (weekParam !== undefined) {
       const weekNumber = parseInt(String(weekParam), 10);
-      if (!isNaN(weekNumber)) {
-        query = query.where(eq(progressPhotosTable.weekNumber, weekNumber));
-      }
+      if (isNaN(weekNumber)) return void res.json([]);
+
+      const photos = await db
+        .select(listColumns)
+        .from(progressPhotosTable)
+        .where(eq(progressPhotosTable.weekNumber, weekNumber));
+
+      return void res.json(photos);
     }
 
-    const photos = await query;
+    const photos = await db.select(listColumns).from(progressPhotosTable);
     return void res.json(photos);
   } catch (err) {
     req.log.error({ err }, "Failed to list progress photos");
@@ -60,20 +71,37 @@ router.get("/", async (req, res) => {
   }
 });
 
-/** GET /api/progress-photos/file/:filename — serve photo file */
-router.get("/file/:filename", (req, res) => {
-  const filename = path.basename(req.params.filename); // sanitize
-  const filePath = path.join(PHOTOS_DIR, filename);
+/**
+ * GET /api/progress-photos/image/:id
+ * Serves the photo binary directly from the database.
+ * Works on ALL devices — no filesystem required.
+ */
+router.get("/image/:id", async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) return void res.status(400).json({ error: "Ongeldig ID" });
 
-  if (!fs.existsSync(filePath)) {
-    return void res.status(404).json({ error: "Foto niet gevonden" });
+  try {
+    const [photo] = await db
+      .select()
+      .from(progressPhotosTable)
+      .where(eq(progressPhotosTable.id, id));
+
+    if (!photo) return void res.status(404).json({ error: "Foto niet gevonden" });
+    if (!photo.photoData) return void res.status(404).json({ error: "Geen fotodata beschikbaar" });
+
+    const buffer = Buffer.from(photo.photoData, "base64");
+
+    res.setHeader("Content-Type",   photo.mimeType || "image/jpeg");
+    res.setHeader("Content-Length", buffer.length);
+    res.setHeader("Cache-Control",  "public, max-age=86400, immutable");
+    return void res.end(buffer);
+  } catch (err) {
+    req.log.error({ err }, "Failed to serve photo from DB");
+    return void res.status(500).json({ error: "Interne serverfout" });
   }
-
-  res.setHeader("Cache-Control", "public, max-age=86400");
-  return void res.sendFile(filePath);
 });
 
-/** POST /api/progress-photos — upload a photo for a specific week + angle */
+/** POST /api/progress-photos — upload and store photo binary in DB */
 router.post("/", upload.single("photo"), async (req, res) => {
   if (!req.file) {
     return void res.status(400).json({ error: "Geen foto ontvangen" });
@@ -83,20 +111,19 @@ router.post("/", upload.single("photo"), async (req, res) => {
   const angle = String(req.body.angle || "").toLowerCase() as Angle;
 
   if (isNaN(weekNumber) || weekNumber < 1) {
-    fs.unlinkSync(req.file.path);
     return void res.status(400).json({ error: "Ongeldig weeknummer" });
   }
-
   if (!VALID_ANGLES.includes(angle)) {
-    fs.unlinkSync(req.file.path);
     return void res.status(400).json({ error: "Hoek moet 'front', 'side' of 'back' zijn" });
   }
 
+  // Encode binary as base64 for storage
+  const photoData = req.file.buffer.toString("base64");
+
   try {
-    // If there's already a photo for this week+angle, delete the old file + record
-    const existing = await db
-      .select()
-      .from(progressPhotosTable)
+    // Replace any existing photo for this week + angle
+    await db
+      .delete(progressPhotosTable)
       .where(
         and(
           eq(progressPhotosTable.weekNumber, weekNumber),
@@ -104,27 +131,21 @@ router.post("/", upload.single("photo"), async (req, res) => {
         )
       );
 
-    for (const old of existing) {
-      const oldPath = path.join(PHOTOS_DIR, old.filename);
-      if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
-      await db.delete(progressPhotosTable).where(eq(progressPhotosTable.id, old.id));
-    }
-
     const [photo] = await db
       .insert(progressPhotosTable)
       .values({
         weekNumber,
         angle,
-        filename: req.file.filename,
-        mimeType: req.file.mimetype,
+        filename:  req.file.originalname || `photo-${weekNumber}-${angle}.jpg`,
+        mimeType:  req.file.mimetype,
+        photoData,
       })
-      .returning();
+      .returning(listColumns);
 
+    notifyClients("photos_updated", { weekNumber, angle });
     return void res.status(201).json(photo);
   } catch (err) {
-    // Clean up uploaded file on DB error
-    fs.unlinkSync(req.file.path);
-    req.log.error({ err }, "Failed to save progress photo");
+    req.log.error({ err }, "Failed to save progress photo to DB");
     return void res.status(500).json({ error: "Interne serverfout" });
   }
 });
@@ -135,16 +156,14 @@ router.delete("/:id", async (req, res) => {
   if (isNaN(id)) return void res.status(400).json({ error: "Ongeldig ID" });
 
   try {
-    const [photo] = await db
+    const [deleted] = await db
       .delete(progressPhotosTable)
       .where(eq(progressPhotosTable.id, id))
-      .returning();
+      .returning(listColumns);
 
-    if (!photo) return void res.status(404).json({ error: "Foto niet gevonden" });
+    if (!deleted) return void res.status(404).json({ error: "Foto niet gevonden" });
 
-    const filePath = path.join(PHOTOS_DIR, photo.filename);
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-
+    notifyClients("photos_updated", { id });
     return void res.json({ ok: true });
   } catch (err) {
     req.log.error({ err }, "Failed to delete progress photo");

@@ -9,6 +9,7 @@ import { searchFoodsOFF, getFoodDetailOFF, searchByBarcodeOFF } from "../service
 // Optional fallback: FatSecret (requires FATSECRET_CLIENT_ID + FATSECRET_CLIENT_SECRET in env
 //   AND the Replit server IP whitelisted at platform.fatsecret.com)
 import { searchFoods as searchFoodsFS, getFoodDetail as getFoodDetailFS, searchByBarcode as searchByBarcodeFS } from "../services/fatSecretService.js";
+import { notifyClients } from "./sync.js";
 
 const router = Router();
 
@@ -149,6 +150,7 @@ router.post("/logs", async (req, res) => {
         vezelG:            vezelG != null ? String(parseFloat(vezelG)) : null,
       })
       .returning();
+    notifyClients("food_logs_updated", { weekNumber, day });
     return void res.status(201).json(log);
   } catch (err) {
     req.log.error({ err }, "Failed to insert food log");
@@ -167,6 +169,7 @@ router.delete("/logs/:id", async (req, res) => {
       .where(eq(foodLogsTable.id, id))
       .returning();
     if (!deleted) return void res.status(404).json({ error: "Log niet gevonden" });
+    notifyClients("food_logs_updated", { id });
     return void res.json({ ok: true });
   } catch (err) {
     req.log.error({ err }, "Failed to delete food log");
