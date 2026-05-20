@@ -4,6 +4,7 @@ import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
 import { parseExcelFile, EXCEL_PATH } from "../services/excelParser.js";
+import XLSX from "xlsx";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -66,6 +67,29 @@ router.delete("/excel", (_req, res) => {
 router.get("/excel/download", (_req, res) => {
   if (fs.existsSync(EXCEL_PATH)) {
     res.download(EXCEL_PATH, "Fitness_Progressie.xlsx");
+  } else {
+    res.status(404).json({ error: "Geen Excel-bestand aanwezig." });
+  }
+});
+
+router.get("/excel/json", (_req, res) => {
+  if (fs.existsSync(EXCEL_PATH)) {
+    try {
+      const wb = XLSX.readFile(EXCEL_PATH);
+      const data: Record<string, string[][]> = {};
+      for (const sheetName of wb.SheetNames) {
+        const sheet = wb.Sheets[sheetName];
+        const rows: string[][] = XLSX.utils.sheet_to_json(sheet, {
+          header: 1,
+          defval: "",
+          raw: false,
+        });
+        data[sheetName] = rows;
+      }
+      res.json(data);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to read excel file" });
+    }
   } else {
     res.status(404).json({ error: "Geen Excel-bestand aanwezig." });
   }

@@ -11,6 +11,7 @@ import TrainingDetail from "@/pages/trainingen/detail";
 import NutritionList from "@/pages/dagboek/index";
 import FeedbackList from "@/pages/feedback/index";
 import Instellen from "@/pages/instellen/index";
+import ExcelViewer from "@/pages/excel-viewer";
 
 const queryClient = new QueryClient();
 
@@ -23,6 +24,7 @@ function Router() {
       <Route path="/dagboek" component={NutritionList} />
       <Route path="/feedback" component={FeedbackList} />
       <Route path="/instellen" component={Instellen} />
+      <Route path="/excel-viewer" component={ExcelViewer} />
       <Route component={NotFound} />
     </Switch>
   );

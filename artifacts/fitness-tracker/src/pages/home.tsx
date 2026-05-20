@@ -109,11 +109,11 @@ export default function Home() {
 
       {weeks && selectedWeek && (
         <div className="fixed bottom-6 right-6 flex items-center gap-2">
-          <a href="/api/upload/excel/download" download>
-            <Button variant="outline" size="icon" className="rounded-full shadow-md bg-card border-border h-12 w-12 flex-shrink-0" title="Bekijk/Download Excel schema">
+          <Link href="/excel-viewer">
+            <Button variant="outline" size="icon" className="rounded-full shadow-md bg-card border-border h-12 w-12 flex-shrink-0" title="Bekijk Excel schema">
               <FileSpreadsheet className="h-5 w-5 text-green-600 dark:text-green-400" />
             </Button>
-          </a>
+          </Link>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" className="rounded-full shadow-md bg-card border-border h-12 px-4 font-semibold">

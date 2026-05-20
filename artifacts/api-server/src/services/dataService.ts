@@ -60,6 +60,8 @@ function toExerciseDef(e: ParsedExercise): ExerciseDefinition {
     sets: e.sets,
     reps: e.reps,
     prescribedWeight: e.prescribedWeight,
+    sheetWeights: e.sheetWeights,
+    sheetReps: e.sheetReps,
     videoUrl: e.videoUrl,
     imageUrl: e.imageUrl,
     order: e.order,

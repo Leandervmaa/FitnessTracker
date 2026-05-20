@@ -5,6 +5,8 @@ export interface ExerciseDefinition {
   sets: number | null;
   reps: string | null;
   prescribedWeight: string | null;
+  sheetWeights?: string | null;
+  sheetReps?: string | null;
   videoUrl: string | null;
   imageUrl: string | null;
   order: number;

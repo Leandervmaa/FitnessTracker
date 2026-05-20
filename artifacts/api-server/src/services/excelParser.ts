@@ -26,6 +26,8 @@ export interface ParsedExercise {
   sets: number | null;
   reps: string | null;
   prescribedWeight: string | null;
+  sheetWeights: string | null;
+  sheetReps: string | null;
   videoUrl: string | null;
   imageUrl: string | null;
   order: number;
@@ -108,9 +110,18 @@ interface ColMap {
   reps: number;      // index of "Reps" column
   setStart: number;  // first weight column (always 3)
   setEnd: number;    // last weight column (werkSets - 1)
+  repsSetStart: number;
+  repsSetEnd: number;
 }
 
-const DEFAULT_COL_MAP: ColMap = { werkSets: 8, reps: 9, setStart: 3, setEnd: 7 };
+const DEFAULT_COL_MAP: ColMap = { 
+  werkSets: 8, 
+  reps: 9, 
+  setStart: 3, 
+  setEnd: 7,
+  repsSetStart: 13,
+  repsSetEnd: 17
+};
 
 /**
  * Read column positions from a header row such as:
@@ -121,18 +132,38 @@ const DEFAULT_COL_MAP: ColMap = { werkSets: 8, reps: 9, setStart: 3, setEnd: 7 }
 function detectColMap(row: string[]): ColMap {
   let werkSets = -1;
   let reps = -1;
+  const set1Indices: number[] = [];
 
   for (let i = 0; i < row.length; i++) {
     const c = trimCell(row[i]).toLowerCase();
     // "Werk sets" or "Werk set" but NOT "Set 1", "Set 2" etc.
     if (/^werk\s*sets?$/.test(c)) werkSets = i;
     if (c === "reps") reps = i;
+    if (c === "set 1") {
+      set1Indices.push(i);
+    }
   }
 
-  if (werkSets !== -1 && reps !== -1) {
-    return { werkSets, reps, setStart: 3, setEnd: werkSets - 1 };
+  const result = {
+    werkSets: werkSets !== -1 ? werkSets : DEFAULT_COL_MAP.werkSets,
+    reps: reps !== -1 ? reps : DEFAULT_COL_MAP.reps,
+    setStart: 3,
+    setEnd: werkSets !== -1 ? werkSets - 1 : DEFAULT_COL_MAP.setEnd,
+    repsSetStart: -1,
+    repsSetEnd: -1,
+  };
+
+  if (set1Indices.length >= 2) {
+    result.repsSetStart = set1Indices[1];
+    const numSets = result.setEnd - result.setStart + 1;
+    result.repsSetEnd = result.repsSetStart + numSets - 1;
+  } else {
+    // Fallback: reps set columns are usually offset by 10 from weight set columns
+    result.repsSetStart = result.setStart + 10;
+    result.repsSetEnd = result.setEnd + 10;
   }
-  return DEFAULT_COL_MAP;
+
+  return result;
 }
 
 /**
@@ -145,6 +176,38 @@ function lastSetWeight(row: string[], colMap: ColMap): string | null {
     if (s !== "") last = s;
   }
   return last;
+}
+
+function getSetWeightsList(row: string[], colMap: ColMap): string {
+  const weights: string[] = [];
+  for (let c = colMap.setStart; c <= colMap.setEnd; c++) {
+    const s = trimCell(row[c]);
+    weights.push(s);
+  }
+  while (weights.length > 0 && weights[weights.length - 1] === "") {
+    weights.pop();
+  }
+  return weights.join(", ");
+}
+
+function getSetRepsList(row: string[], colMap: ColMap): string {
+  if (colMap.repsSetStart === -1) return "";
+  const reps: string[] = [];
+  for (let c = colMap.repsSetStart; c <= colMap.repsSetEnd; c++) {
+    const s = trimCell(row[c]);
+    // Handle Excel dates parsed as date strings for reps targets like 8-12
+    if (s !== "" && !isNaN(Date.parse(s)) && s.includes("-")) {
+      // Excel sometimes returns date serial or formatted strings. If it looks like a date,
+      // let's try to just preserve the text, but usually it is just numbers like '10', '8', etc.
+      reps.push(s);
+    } else {
+      reps.push(s);
+    }
+  }
+  while (reps.length > 0 && reps[reps.length - 1] === "") {
+    reps.pop();
+  }
+  return reps.join(", ");
 }
 
 // ─── training-sheet parser ───────────────────────────────────────────────────
@@ -235,6 +298,8 @@ function parseTrainingSheet(
           sets: toNum(row[colMap.werkSets]),
           reps: trimCell(row[colMap.reps]) || null,
           prescribedWeight: lastSetWeight(row, colMap),
+          sheetWeights: getSetWeightsList(row, colMap),
+          sheetReps: getSetRepsList(row, colMap),
           videoUrl,
           imageUrl: null,
           order: exerciseOrder,
@@ -261,6 +326,8 @@ function parseTrainingSheet(
         sets: toNum(row[colMap.werkSets]),
         reps: trimCell(row[colMap.reps]) || null,
         prescribedWeight: lastSetWeight(row, colMap),
+        sheetWeights: getSetWeightsList(row, colMap),
+        sheetReps: getSetRepsList(row, colMap),
         videoUrl,
         imageUrl: null,
         order: exerciseOrder,
