@@ -1,24 +1,27 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useCallback, lazy, Suspense } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Search, Plus, Trash2, X, Loader2, AlertCircle,
-  ScanBarcode, Calculator, Pencil
+  ScanBarcode, Calculator, Pencil, ChevronRight
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 
+// Lazy-load scanner to avoid SSR issues
+const BarcodeScanner = lazy(() => import("./barcode-scanner"));
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface SearchResult {
+export interface FoodSearchResult {
   food_id: string;
   food_name: string;
   brand_name?: string;
   food_description: string;
 }
 
-interface Serving {
+export interface Serving {
   serving_id: string;
   serving_description: string;
   calories: string;
@@ -28,7 +31,7 @@ interface Serving {
   fiber?: string;
 }
 
-interface FoodDetail {
+export interface FoodDetail {
   food_id: string;
   food_name: string;
   brand_name?: string;
@@ -95,63 +98,258 @@ function useAddFoodLog() {
   });
 }
 
-function useSearch(query: string) {
-  return useQuery<{ results: SearchResult[] } | { error: string; code?: number }>({
-    queryKey: ["food-search", query],
-    queryFn: async () => {
-      const res = await fetch(`/api/food/search?q=${encodeURIComponent(query)}`);
-      return res.json();
-    },
-    enabled: query.length >= 2,
-    staleTime: 60_000,
-    retry: false,
-  });
+// ─── Add food panel (search + serving selection) ──────────────────────────────
+
+interface AddFoodPanelProps {
+  weekNumber: number;
+  day: string;
+  dayLabel: string;
+  initialFoodId?: string | null;
+  onClose: () => void;
 }
 
-function useFoodDetail(foodId: string | null) {
-  return useQuery<FoodDetail>({
-    queryKey: ["food-detail", foodId],
+function AddFoodPanel({ weekNumber, day, dayLabel, initialFoodId, onClose }: AddFoodPanelProps) {
+  const { toast } = useToast();
+  const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [selectedFoodId, setSelectedFoodId] = useState<string | null>(initialFoodId ?? null);
+  const [selectedServingId, setSelectedServingId] = useState("");
+  const [amount, setAmount] = useState("1");
+  const addMutation = useAddFoodLog();
+
+  // Debounce
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(query), 450);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  // Search
+  const { data: searchData, isFetching: searching } = useQuery<{ results: FoodSearchResult[] } | { error: string }>({
+    queryKey: ["food-search", debouncedQuery],
     queryFn: async () => {
-      const res = await fetch(`/api/food/${foodId}`);
+      const res = await fetch(`/api/food/search?q=${encodeURIComponent(debouncedQuery)}&max=25`);
+      return res.json();
+    },
+    enabled: debouncedQuery.length >= 2 && !selectedFoodId,
+    staleTime: 60_000,
+    retry: 1,
+  });
+
+  // Food detail
+  const { data: foodDetail, isFetching: loadingDetail } = useQuery<FoodDetail>({
+    queryKey: ["food-detail", selectedFoodId],
+    queryFn: async () => {
+      const res = await fetch(`/api/food/${selectedFoodId}`);
       if (!res.ok) throw new Error("Ophalen mislukt");
       return res.json();
     },
-    enabled: !!foodId,
+    enabled: !!selectedFoodId,
     staleTime: 300_000,
   });
-}
 
-// ─── Barcode detector ─────────────────────────────────────────────────────────
+  // Auto-select first serving when detail loads
+  useEffect(() => {
+    if (foodDetail?.servings?.length) setSelectedServingId(foodDetail.servings[0].serving_id);
+  }, [foodDetail]);
 
-async function readBarcodeFromFile(file: File): Promise<string | null> {
-  // Try native BarcodeDetector first (Chrome Android)
-  if ("BarcodeDetector" in window) {
+  const selectedServing = foodDetail?.servings.find(s => s.serving_id === selectedServingId);
+  const amt = parseFloat(amount) || 1;
+
+  const calcNutrients = (s: Serving, a: number) => ({
+    kcal: Math.round(parseFloat(s.calories || "0") * a),
+    eiwit: Math.round(parseFloat(s.protein || "0") * a * 10) / 10,
+    koolh: Math.round(parseFloat(s.carbohydrate || "0") * a * 10) / 10,
+    vet: Math.round(parseFloat(s.fat || "0") * a * 10) / 10,
+    vezel: s.fiber ? Math.round(parseFloat(s.fiber) * a * 10) / 10 : null,
+  });
+
+  const preview = selectedServing ? calcNutrients(selectedServing, amt) : null;
+
+  const handleAdd = async () => {
+    if (!foodDetail || !selectedServing) return;
+    const n = calcNutrients(selectedServing, amt);
     try {
-      const bd = new (window as any).BarcodeDetector({
-        formats: ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39"],
+      await addMutation.mutateAsync({
+        weekNumber, day,
+        fatSecretFoodId:    foodDetail.food_id,
+        fatSecretServingId: selectedServing.serving_id,
+        foodName:           foodDetail.food_name,
+        servingDescription: selectedServing.serving_description,
+        amountServings:     String(amt),
+        kcal: n.kcal, eiwittenG: n.eiwit, koolhydratenG: n.koolh,
+        vetenG: n.vet, vezelG: n.vezel,
       });
-      const bitmap = await createImageBitmap(file);
-      const codes = await bd.detect(bitmap);
-      if (codes.length > 0) return codes[0].rawValue as string;
-    } catch { /* fall through */ }
-  }
-  // Fallback: null (manual entry)
-  return null;
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function calcNutrients(serving: Serving, amt: number) {
-  return {
-    kcal: Math.round(parseFloat(serving.calories || "0") * amt),
-    eiwit: Math.round(parseFloat(serving.protein || "0") * amt * 10) / 10,
-    koolh: Math.round(parseFloat(serving.carbohydrate || "0") * amt * 10) / 10,
-    vet: Math.round(parseFloat(serving.fat || "0") * amt * 10) / 10,
-    vezel: serving.fiber ? Math.round(parseFloat(serving.fiber) * amt * 10) / 10 : null,
+      toast({ title: `✓ ${foodDetail.food_name} toegevoegd aan ${dayLabel}` });
+      onClose();
+    } catch (err: any) {
+      toast({ title: "Toevoegen mislukt", description: err.message, variant: "destructive" });
+    }
   };
+
+  const searchResults = (searchData as any)?.results as FoodSearchResult[] | undefined;
+  const searchError   = (searchData as any)?.error as string | undefined;
+
+  // ── Serving selection screen ────────────────────────────────────────────────
+  if (selectedFoodId) {
+    return (
+      <div className="flex flex-col h-full">
+        {/* Back header */}
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
+          <button onClick={() => { setSelectedFoodId(null); setQuery(""); }} className="text-muted-foreground hover:text-foreground">
+            <X className="h-5 w-5" />
+          </button>
+          {loadingDetail ? (
+            <div className="flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /><span className="text-sm font-semibold">Laden…</span></div>
+          ) : (
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-sm truncate">{foodDetail?.food_name}</p>
+              {foodDetail?.brand_name && <p className="text-[10px] text-muted-foreground">{foodDetail.brand_name}</p>}
+            </div>
+          )}
+        </div>
+
+        {foodDetail && !loadingDetail && (
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            {/* Serving selector */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Portiegrootte</Label>
+              <div className="rounded-xl border border-border overflow-hidden divide-y divide-border">
+                {foodDetail.servings.map(s => (
+                  <button
+                    key={s.serving_id}
+                    onClick={() => setSelectedServingId(s.serving_id)}
+                    className={`w-full flex items-center justify-between px-4 py-3 text-left transition-colors ${
+                      selectedServingId === s.serving_id
+                        ? "bg-primary/10 text-primary"
+                        : "hover:bg-secondary/50"
+                    }`}
+                  >
+                    <div>
+                      <p className="text-sm font-semibold">{s.serving_description}</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {Math.round(parseFloat(s.calories))} kcal · {s.protein}g eiwit
+                      </p>
+                    </div>
+                    {selectedServingId === s.serving_id && (
+                      <div className="h-4 w-4 rounded-full bg-primary" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Amount */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Aantal porties</Label>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setAmount(a => String(Math.max(0.5, (parseFloat(a) || 1) - 0.5)))}
+                  className="h-10 w-10 rounded-lg border border-border font-bold text-xl flex items-center justify-center hover:bg-secondary"
+                >−</button>
+                <Input
+                  type="number" inputMode="decimal" value={amount}
+                  onChange={e => setAmount(e.target.value)}
+                  min="0.1" step="0.5"
+                  className="h-10 text-center font-bold text-lg flex-1"
+                />
+                <button
+                  onClick={() => setAmount(a => String((parseFloat(a) || 1) + 0.5))}
+                  className="h-10 w-10 rounded-lg border border-border font-bold text-xl flex items-center justify-center hover:bg-secondary"
+                >+</button>
+              </div>
+            </div>
+
+            {/* Preview */}
+            {preview && (
+              <div className="bg-primary/5 border border-primary/20 rounded-xl p-3">
+                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2">Voedingswaarden</p>
+                <div className="grid grid-cols-4 gap-2 text-center">
+                  {([["kcal", preview.kcal, "text-primary"], ["eiwit", `${preview.eiwit}g`, ""], ["koolh", `${preview.koolh}g`, ""], ["vet", `${preview.vet}g`, ""]] as const).map(([lbl, val, cls]) => (
+                    <div key={lbl}>
+                      <div className={`text-base font-black ${cls}`}>{val}</div>
+                      <div className="text-[9px] text-muted-foreground">{lbl}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <Button
+              className="w-full h-12 font-bold text-base"
+              onClick={handleAdd}
+              disabled={addMutation.isPending || !selectedServing}
+            >
+              {addMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Toevoegen aan {dayLabel}
+            </Button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── Search screen ───────────────────────────────────────────────────────────
+  return (
+    <div className="flex flex-col h-full">
+      {/* Search input */}
+      <div className="px-4 py-3 border-b border-border">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder="Zoek voeding (bijv. kipfilet, brood, yoghurt...)"
+            className="pl-10 h-11"
+            autoFocus
+          />
+          {searching && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />}
+        </div>
+      </div>
+
+      {/* Results */}
+      <div className="flex-1 overflow-y-auto">
+        {searchError && (
+          <div className="flex items-start gap-2 m-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 rounded-lg p-3 text-xs text-amber-800 dark:text-amber-300">
+            <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+            <span>{searchError}</span>
+          </div>
+        )}
+
+        {searchResults?.map(r => (
+          <button
+            key={r.food_id}
+            onClick={() => setSelectedFoodId(r.food_id)}
+            className="w-full text-left px-4 py-3 hover:bg-secondary/60 transition-colors border-b border-border/50 flex items-center gap-3"
+          >
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-foreground truncate">{r.food_name}</p>
+              {r.brand_name && <p className="text-[10px] font-medium text-muted-foreground">{r.brand_name}</p>}
+              <p className="text-[10px] text-muted-foreground truncate">{r.food_description}</p>
+            </div>
+            <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+          </button>
+        ))}
+
+        {searchResults?.length === 0 && debouncedQuery.length >= 2 && !searching && (
+          <div className="flex flex-col items-center justify-center py-12 px-6 text-center">
+            <Search className="h-12 w-12 text-muted-foreground/30 mb-3" />
+            <p className="font-semibold text-muted-foreground">Geen resultaten voor "{debouncedQuery}"</p>
+            <p className="text-xs text-muted-foreground mt-1">Probeer een andere zoekterm of scan de barcode</p>
+          </div>
+        )}
+
+        {!debouncedQuery && (
+          <div className="flex flex-col items-center justify-center py-12 px-6 text-center">
+            <Search className="h-12 w-12 text-muted-foreground/20 mb-3" />
+            <p className="text-sm text-muted-foreground">Typ minimaal 2 tekens om te zoeken</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
-// ─── Props ────────────────────────────────────────────────────────────────────
+// ─── Main FoodTracker component ───────────────────────────────────────────────
 
 interface Props {
   weekNumber: number;
@@ -161,47 +359,19 @@ interface Props {
   onTotalKcalChange?: (totalKcal: number) => void;
 }
 
-// ─── Main component ───────────────────────────────────────────────────────────
-
 export default function FoodTracker({ weekNumber, day, dayLabel, sheetKcal, onTotalKcalChange }: Props) {
   const { toast } = useToast();
   const qc = useQueryClient();
 
-  // Manual kcal
   const [manualKcal, setManualKcal] = useState("");
-
-  // Search state
-  const [query, setQuery] = useState("");
-  const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [selectedFoodId, setSelectedFoodId] = useState<string | null>(null);
-  const [selectedServingId, setSelectedServingId] = useState("");
-  const [amount, setAmount] = useState("1");
   const [showSearch, setShowSearch] = useState(false);
-
-  // Barcode
-  const barcodeInputRef = useRef<HTMLInputElement>(null);
-  const [barcodeManual, setBarcodeManual] = useState("");
-  const [showManualBarcode, setShowManualBarcode] = useState(false);
-  const [barcodeLoading, setBarcodeLoading] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
+  const [barcodeLoadingId, setBarcodeLoadingId] = useState<string | null>(null);
 
   const { data: foodLogs = [] } = useFoodLogs(weekNumber, day);
-  const { data: searchData, isFetching: searching } = useSearch(debouncedQuery);
-  const { data: foodDetail, isFetching: loadingDetail } = useFoodDetail(selectedFoodId);
-  const addMutation = useAddFoodLog();
   const deleteMutation = useDeleteFoodLog();
 
-  // Debounce
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedQuery(query), 400);
-    return () => clearTimeout(t);
-  }, [query]);
-
-  // Auto-select first serving
-  useEffect(() => {
-    if (foodDetail?.servings?.length) setSelectedServingId(foodDetail.servings[0].serving_id);
-  }, [foodDetail]);
-
-  // Calculate totals
+  // Totals
   const loggedKcal = foodLogs.reduce((s, l) => s + parseFloat(l.kcal || "0"), 0);
   const manual = parseFloat(manualKcal) || 0;
   const totalKcal = Math.round(manual + loggedKcal);
@@ -210,99 +380,97 @@ export default function FoodTracker({ weekNumber, day, dayLabel, sheetKcal, onTo
     onTotalKcalChange?.(totalKcal);
   }, [totalKcal, onTotalKcalChange]);
 
-  const selectedServing = foodDetail?.servings.find(s => s.serving_id === selectedServingId);
-  const preview = selectedServing ? calcNutrients(selectedServing, parseFloat(amount) || 1) : null;
-
-  // ─── Barcode lookup ────────────────────────────────────────────────────────
-
-  const lookupBarcode = useCallback(async (code: string) => {
-    setBarcodeLoading(true);
+  // Handle barcode detected from live scanner
+  const handleBarcodeDetected = useCallback(async (barcode: string) => {
+    setShowScanner(false);
+    setBarcodeLoadingId(barcode);
     try {
-      const res = await fetch(`/api/food/barcode?code=${encodeURIComponent(code.trim())}`);
+      const res = await fetch(`/api/food/barcode?code=${encodeURIComponent(barcode)}`);
       if (!res.ok) {
-        toast({ title: "Barcode niet gevonden", description: "Product niet herkend", variant: "destructive" });
+        toast({ title: "Barcode niet herkend", description: `Code: ${barcode}`, variant: "destructive" });
         return;
       }
-      const detail: FoodDetail = await res.json();
-      setSelectedFoodId(detail.food_id);
+      const detail = await res.json();
+      if (detail.error) {
+        toast({ title: "Product niet gevonden", description: `Barcode: ${barcode}`, variant: "destructive" });
+        return;
+      }
+      // Pre-fill search panel with found food
       setShowSearch(true);
-      setShowManualBarcode(false);
-      toast({ title: `${detail.food_name} gevonden ✓` });
+      // Store the food id to pre-select it in AddFoodPanel
+      setBarcodeLoadingId(null);
+      setScannedFoodId(detail.food_id);
     } catch {
-      toast({ title: "Barcode zoeken mislukt", variant: "destructive" });
+      toast({ title: "Barcode opzoeken mislukt", variant: "destructive" });
     } finally {
-      setBarcodeLoading(false);
+      setBarcodeLoadingId(null);
     }
   }, [toast]);
 
-  const handleBarcodeFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setBarcodeLoading(true);
-    const code = await readBarcodeFromFile(file);
-    if (code) {
-      await lookupBarcode(code);
-    } else {
-      // BarcodeDetector not available → ask for manual entry
-      setShowManualBarcode(true);
-      setBarcodeLoading(false);
-      toast({ title: "Streepjescode niet automatisch herkend", description: "Vul de barcode handmatig in." });
-    }
-    if (barcodeInputRef.current) barcodeInputRef.current.value = "";
-  };
+  const [scannedFoodId, setScannedFoodId] = useState<string | null>(null);
 
-  // ─── Add food ──────────────────────────────────────────────────────────────
+  // ── Render ──────────────────────────────────────────────────────────────────
 
-  const handleAdd = async () => {
-    if (!foodDetail || !selectedServing) return;
-    const amt = parseFloat(amount) || 1;
-    const n = calcNutrients(selectedServing, amt);
-    try {
-      await addMutation.mutateAsync({
-        weekNumber,
-        day,
-        fatSecretFoodId: foodDetail.food_id,
-        fatSecretServingId: selectedServing.serving_id,
-        foodName: foodDetail.food_name,
-        servingDescription: selectedServing.serving_description,
-        amountServings: String(amt),
-        kcal: n.kcal,
-        eiwittenG: n.eiwit,
-        koolhydratenG: n.koolh,
-        vetenG: n.vet,
-        vezelG: n.vezel,
-      });
-      toast({ title: `${foodDetail.food_name} toegevoegd ✓` });
-      setSelectedFoodId(null);
-      setQuery("");
-      setDebouncedQuery("");
-      setAmount("1");
-    } catch (err: any) {
-      toast({ title: "Toevoegen mislukt", description: err.message, variant: "destructive" });
-    }
-  };
+  // Full-screen search/serving panel
+  if (showSearch) {
+    return (
+      <div className="fixed inset-0 z-40 bg-background flex flex-col">
+        {/* Panel header */}
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-border sticky top-0 bg-background">
+          <button
+            onClick={() => { setShowSearch(false); setScannedFoodId(null); }}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <X className="h-5 w-5" />
+          </button>
+          <h2 className="font-bold">Voeding toevoegen</h2>
+          <div className="ml-auto">
+            <button
+              onClick={() => { setShowSearch(false); setShowScanner(true); }}
+              className="text-muted-foreground hover:text-primary transition-colors"
+            >
+              <ScanBarcode className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
 
-  const isIpError = (searchData as any)?.code === 21 || (searchData as any)?.error?.includes?.("IP");
-  const searchResults = (searchData as any)?.results as SearchResult[] | undefined;
+        <AddFoodPanel
+          weekNumber={weekNumber}
+          day={day}
+          dayLabel={dayLabel}
+          initialFoodId={scannedFoodId}
+          onClose={() => { setShowSearch(false); setScannedFoodId(null); }}
+        />
+      </div>
+    );
+  }
 
-  // ─── Render ────────────────────────────────────────────────────────────────
+  // Fullscreen scanner
+  if (showScanner) {
+    return (
+      <Suspense fallback={<div className="fixed inset-0 z-50 bg-black flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}>
+        <BarcodeScanner
+          onDetected={handleBarcodeDetected}
+          onClose={() => setShowScanner(false)}
+        />
+      </Suspense>
+    );
+  }
 
+  // ── Normal view ─────────────────────────────────────────────────────────────
   return (
     <div className="space-y-5">
 
       {/* ① Manual kcal */}
       <div className="space-y-1.5">
         <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-          <Pencil className="h-3.5 w-3.5" /> Handmatig kcal invullen
+          <Pencil className="h-3.5 w-3.5" /> Handmatig kcal
         </Label>
         {sheetKcal != null && (
-          <p className="text-[10px] text-muted-foreground">
-            📋 Spreadsheet-doel: <span className="font-bold">{sheetKcal} kcal</span>
-          </p>
+          <p className="text-[10px] text-muted-foreground">📋 Spreadsheet-doel: <strong>{sheetKcal} kcal</strong></p>
         )}
         <Input
-          type="number"
-          inputMode="numeric"
+          type="number" inputMode="numeric"
           value={manualKcal}
           onChange={e => setManualKcal(e.target.value)}
           placeholder="Bijv. 800"
@@ -310,173 +478,26 @@ export default function FoodTracker({ weekNumber, day, dayLabel, sheetKcal, onTo
         />
       </div>
 
-      {/* ② Food search + barcode */}
-      <div className="space-y-2">
-        <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-          <Search className="h-3.5 w-3.5" /> Voedsel toevoegen via zoeken of barcode
-        </Label>
-
-        {/* Action buttons */}
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            className="flex-1 h-10 font-bold border-dashed text-sm"
-            onClick={() => setShowSearch(s => !s)}
-          >
-            <Plus className="h-4 w-4 mr-1.5" /> Zoeken
-          </Button>
-
-          {/* Hidden file input for camera */}
-          <input
-            ref={barcodeInputRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            onChange={handleBarcodeFile}
-            className="hidden"
-          />
-          <Button
-            variant="outline"
-            className="flex-1 h-10 font-bold border-dashed text-sm"
-            onClick={() => barcodeInputRef.current?.click()}
-            disabled={barcodeLoading}
-          >
-            {barcodeLoading
-              ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-              : <ScanBarcode className="h-4 w-4 mr-1.5" />}
-            Barcode
-          </Button>
-        </div>
-
-        {/* Manual barcode fallback */}
-        {showManualBarcode && (
-          <div className="flex gap-2">
-            <Input
-              value={barcodeManual}
-              onChange={e => setBarcodeManual(e.target.value)}
-              placeholder="Vul barcodenum­mer in (bijv. 8710400100)"
-              className="h-10 text-sm"
-              inputMode="numeric"
-              onKeyDown={e => { if (e.key === "Enter") lookupBarcode(barcodeManual); }}
-            />
-            <Button
-              className="h-10 px-3 shrink-0"
-              onClick={() => lookupBarcode(barcodeManual)}
-              disabled={barcodeLoading || !barcodeManual}
-            >
-              Zoek
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-10 w-10 shrink-0"
-              onClick={() => { setShowManualBarcode(false); setBarcodeManual(""); }}
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-        )}
-
-        {/* IP error */}
-        {isIpError && (
-          <div className="flex items-start gap-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-3 text-xs text-amber-800 dark:text-amber-300">
-            <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-            <span>Voedingsdatabase vereist IP-whitelisting op platform.fatsecret.com</span>
-          </div>
-        )}
-
-        {/* Search panel */}
-        {showSearch && (
-          <div className="bg-card border border-border rounded-xl p-4 space-y-3">
-            {!selectedFoodId && (
-              <>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    value={query}
-                    onChange={e => { setQuery(e.target.value); }}
-                    placeholder="Zoek voeding (bijv. kip, brood...)"
-                    className="pl-10 h-10"
-                    autoFocus
-                  />
-                  {searching && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />}
-                </div>
-
-                {searchResults && (
-                  <div className="max-h-48 overflow-y-auto rounded-lg border border-border divide-y divide-border">
-                    {searchResults.map(r => (
-                      <button
-                        key={r.food_id}
-                        onClick={() => setSelectedFoodId(r.food_id)}
-                        className="w-full text-left px-3 py-2.5 hover:bg-secondary/60 transition-colors"
-                      >
-                        <div className="text-sm font-semibold truncate">{r.food_name}</div>
-                        {r.brand_name && <div className="text-[10px] text-muted-foreground">{r.brand_name}</div>}
-                        <div className="text-[10px] text-muted-foreground truncate">{r.food_description}</div>
-                      </button>
-                    ))}
-                    {searchResults.length === 0 && debouncedQuery.length >= 2 && (
-                      <div className="px-3 py-4 text-sm text-muted-foreground text-center">Geen resultaten</div>
-                    )}
-                  </div>
-                )}
-              </>
-            )}
-
-            {/* Serving panel */}
-            {selectedFoodId && (
-              loadingDetail ? (
-                <div className="flex justify-center py-4"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
-              ) : foodDetail ? (
-                <div className="space-y-3">
-                  <div className="flex items-start gap-2">
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold text-sm truncate">{foodDetail.food_name}</p>
-                      {foodDetail.brand_name && <p className="text-[10px] text-muted-foreground">{foodDetail.brand_name}</p>}
-                    </div>
-                    <button onClick={() => { setSelectedFoodId(null); setQuery(""); }} className="text-muted-foreground hover:text-foreground">
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-muted-foreground">Portie</label>
-                    <select
-                      value={selectedServingId}
-                      onChange={e => setSelectedServingId(e.target.value)}
-                      className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm"
-                    >
-                      {foodDetail.servings.map(s => (
-                        <option key={s.serving_id} value={s.serving_id}>{s.serving_description}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-muted-foreground">Aantal porties</label>
-                    <Input type="number" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} min="0.1" step="0.5" className="h-10" />
-                  </div>
-
-                  {preview && (
-                    <div className="grid grid-cols-4 gap-1.5 bg-secondary/30 rounded-lg p-2 text-center">
-                      {[["kcal", preview.kcal], ["eiwit", `${preview.eiwit}g`], ["koolh", `${preview.koolh}g`], ["vet", `${preview.vet}g`]].map(([lbl, val]) => (
-                        <div key={lbl as string}>
-                          <div className="text-sm font-black text-primary">{val}</div>
-                          <div className="text-[9px] text-muted-foreground">{lbl}</div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  <Button className="w-full h-10 font-bold" onClick={handleAdd} disabled={addMutation.isPending || !selectedServing}>
-                    {addMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />}
-                    Toevoegen aan {dayLabel}
-                  </Button>
-                </div>
-              ) : null
-            )}
-          </div>
-        )}
+      {/* ② Buttons */}
+      <div className="grid grid-cols-2 gap-3">
+        <Button
+          variant="outline"
+          className="h-12 font-bold border-2 border-dashed gap-2"
+          onClick={() => setShowSearch(true)}
+        >
+          <Search className="h-4 w-4" /> Zoeken
+        </Button>
+        <Button
+          variant="outline"
+          className="h-12 font-bold border-2 border-dashed gap-2"
+          onClick={() => setShowScanner(true)}
+          disabled={!!barcodeLoadingId}
+        >
+          {barcodeLoadingId
+            ? <Loader2 className="h-4 w-4 animate-spin" />
+            : <ScanBarcode className="h-4 w-4" />}
+          Scan barcode
+        </Button>
       </div>
 
       {/* ③ Food log list */}
@@ -485,7 +506,7 @@ export default function FoodTracker({ weekNumber, day, dayLabel, sheetKcal, onTo
           <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Gegeten vandaag</p>
           <div className="bg-card border border-border rounded-xl divide-y divide-border overflow-hidden">
             {foodLogs.map(log => (
-              <div key={log.id} className="flex items-center gap-3 px-4 py-2.5">
+              <div key={log.id} className="flex items-center gap-3 px-4 py-3">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold truncate">{log.foodName}</p>
                   <p className="text-[10px] text-muted-foreground">
@@ -498,7 +519,7 @@ export default function FoodTracker({ weekNumber, day, dayLabel, sheetKcal, onTo
                 <button
                   onClick={() => deleteMutation.mutate(log.id)}
                   disabled={deleteMutation.isPending}
-                  className="text-muted-foreground hover:text-destructive transition-colors shrink-0"
+                  className="text-muted-foreground hover:text-destructive transition-colors shrink-0 p-1"
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -516,7 +537,7 @@ export default function FoodTracker({ weekNumber, day, dayLabel, sheetKcal, onTo
         </div>
         <div className="space-y-1.5 text-sm">
           <div className="flex justify-between text-muted-foreground">
-            <span>Handmatig ingevoerd</span>
+            <span>Handmatig</span>
             <span className="font-semibold">{manual > 0 ? `${Math.round(manual)} kcal` : "—"}</span>
           </div>
           <div className="flex justify-between text-muted-foreground">
@@ -524,7 +545,7 @@ export default function FoodTracker({ weekNumber, day, dayLabel, sheetKcal, onTo
             <span className="font-semibold">{loggedKcal > 0 ? `${Math.round(loggedKcal)} kcal` : "—"}</span>
           </div>
           <div className="border-t border-primary/20 pt-2 flex justify-between">
-            <span className="font-black text-foreground">Totaal</span>
+            <span className="font-black">Totaal</span>
             <span className="font-black text-xl text-primary">{totalKcal > 0 ? `${totalKcal} kcal` : "0 kcal"}</span>
           </div>
           {sheetKcal != null && totalKcal > 0 && (
