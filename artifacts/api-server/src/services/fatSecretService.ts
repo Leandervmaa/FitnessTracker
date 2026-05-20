@@ -3,17 +3,31 @@
  * Proxies calls to the FatSecret Platform API (OAuth2 client credentials).
  * Caches the access token for up to 23 hours.
  *
- * ⚠️  IMPORTANT: The FatSecret API requires IP whitelisting.
- *     Add the deployment server's IP to the allowed list at:
- *     https://platform.fatsecret.com/api/ → My Applications → [your app] → Allowed IPs
+ * ⚠️  NEVER call FatSecret from the frontend — all requests must go through
+ *     this backend service so only the Replit server IP is seen by FatSecret.
+ *
+ * Replit Secrets required:
+ *   FATSECRET_CLIENT_ID     — your FatSecret client ID
+ *   FATSECRET_CLIENT_SECRET — your FatSecret client secret
+ *
+ * FatSecret dashboard → My Applications → Allowed IPs:
+ *   Add the Replit server outbound IP (run `curl https://api.ipify.org` in the Replit shell).
  */
 
 import { logger } from "../lib/logger.js";
 
-const CLIENT_ID = "a9ca25190329443e992cd013fc041aa2";
-const CLIENT_SECRET = "6f3ccd9065954db395b8f2780ecc70eb";
+const CLIENT_ID     = process.env.FATSECRET_CLIENT_ID;
+const CLIENT_SECRET = process.env.FATSECRET_CLIENT_SECRET;
 const TOKEN_URL = "https://oauth.fatsecret.com/connect/token";
-const API_URL = "https://platform.fatsecret.com/rest/server.api";
+const API_URL   = "https://platform.fatsecret.com/rest/server.api";
+
+// Warn once at startup if secrets are missing
+if (!CLIENT_ID || !CLIENT_SECRET) {
+  logger.warn(
+    "FATSECRET_CLIENT_ID or FATSECRET_CLIENT_SECRET is not set in environment variables. " +
+    "Food search will be unavailable. Set these in Replit Secrets."
+  );
+}
 
 // ─── Token cache ──────────────────────────────────────────────────────────────
 
@@ -21,27 +35,42 @@ let cachedToken: string | null = null;
 let tokenExpiresAt = 0;
 
 async function getAccessToken(): Promise<string> {
+  if (!CLIENT_ID || !CLIENT_SECRET) {
+    throw Object.assign(
+      new Error("FatSecret credentials not configured. Voeg FATSECRET_CLIENT_ID en FATSECRET_CLIENT_SECRET toe aan Replit Secrets."),
+      { code: "NO_CREDENTIALS" }
+    );
+  }
+
   if (cachedToken && Date.now() < tokenExpiresAt) return cachedToken;
 
   const body = new URLSearchParams({
-    grant_type: "client_credentials",
-    client_id: CLIENT_ID,
+    grant_type:    "client_credentials",
+    client_id:     CLIENT_ID,
     client_secret: CLIENT_SECRET,
-    scope: "basic",
+    scope:         "basic",
   });
 
   const res = await fetch(TOKEN_URL, {
-    method: "POST",
+    method:  "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: body.toString(),
+    body:    body.toString(),
   });
 
-  if (!res.ok) throw new Error(`FatSecret token request failed: ${res.status}`);
-  const data = await res.json() as { access_token: string; expires_in: number };
+  if (!res.ok) {
+    const text = await res.text();
+    logger.error({ status: res.status, body: text }, "FatSecret token request failed");
+    throw Object.assign(
+      new Error(`FatSecret token request mislukt (HTTP ${res.status}). Controleer FATSECRET_CLIENT_ID en FATSECRET_CLIENT_SECRET.`),
+      { code: "TOKEN_FAILED" }
+    );
+  }
 
+  const data = await res.json() as { access_token: string; expires_in: number };
   cachedToken = data.access_token;
   // Expire 60 min before actual expiry for safety
   tokenExpiresAt = Date.now() + (data.expires_in - 3600) * 1000;
+  logger.info("FatSecret access token refreshed");
   return cachedToken;
 }
 
@@ -60,8 +89,25 @@ async function callApi(params: Record<string, string>): Promise<any> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const data = await res.json() as any;
   if (data.error) {
-    logger.warn({ code: data.error.code, msg: data.error.message }, "FatSecret API error");
-    throw Object.assign(new Error(data.error.message as string), { code: data.error.code as number });
+    const code: number = data.error.code;
+    const msg: string  = data.error.message;
+
+    // Provide a clear, actionable message per error code
+    let friendlyMsg = msg;
+    if (code === 21) {
+      friendlyMsg =
+        "FatSecret IP-whitelist fout: het Replit server-IP staat niet in de toegestane lijst. " +
+        "Voeg het IP toe via platform.fatsecret.com → My Applications → Allowed IPs.";
+    } else if (code === 2) {
+      friendlyMsg = "Ongeldige FatSecret credentials. Controleer FATSECRET_CLIENT_ID en FATSECRET_CLIENT_SECRET in Replit Secrets.";
+      cachedToken = null; // invalidate so next call retries auth
+    } else if (code === 3 || code === 4) {
+      friendlyMsg = "FatSecret token verlopen of ongeldig. Token wordt vernieuwd bij volgende aanroep.";
+      cachedToken = null;
+    }
+
+    logger.warn({ code, originalMsg: msg }, friendlyMsg);
+    throw Object.assign(new Error(friendlyMsg), { code });
   }
   return data;
 }

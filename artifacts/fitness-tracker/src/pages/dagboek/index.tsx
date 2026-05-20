@@ -104,7 +104,7 @@ export default function DagboekPage() {
       weekNumber: selectedWeek,
       day: dayId,
       dayLabel: dayInfo?.nl || dayId,
-      kcal: data.kcal ? parseInt(data.kcal) : null,
+      kcal: data.totalKcal > 0 ? data.totalKcal : null,
       eiwittenG: null as number | null,
       koolhydratenG: null as number | null,
       vetenG: null as number | null,
@@ -271,6 +271,7 @@ function DagForm({ day, weekNumber, entry, sheetDay, onSave, isSaving }: {
   };
 
   const [formData, setFormData] = useState(buildForm);
+  const [totalKcal, setTotalKcal] = useState<number>(0);
 
   useEffect(() => {
     setFormData(buildForm());
@@ -344,14 +345,13 @@ function DagForm({ day, weekNumber, entry, sheetDay, onSave, isSaving }: {
       {/* Sectie: Voeding */}
       <div>
         <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">Voeding</p>
-        {/* Sheet reference */}
-        {sheetDay?.kcal != null && (
-          <p className="text-[10px] text-muted-foreground mb-3">
-            📋 Spreadsheet-waarde: <span className="font-bold">{sheetDay.kcal} kcal</span>
-          </p>
-        )}
-        {/* FatSecret tracker */}
-        <FoodTracker weekNumber={weekNumber} day={day.id} dayLabel={day.nl} />
+        <FoodTracker
+          weekNumber={weekNumber}
+          day={day.id}
+          dayLabel={day.nl}
+          sheetKcal={sheetDay?.kcal ?? null}
+          onTotalKcalChange={setTotalKcal}
+        />
       </div>
 
       {/* Sectie: Welzijn */}
@@ -419,7 +419,7 @@ function DagForm({ day, weekNumber, entry, sheetDay, onSave, isSaving }: {
 
       <Button
         className="w-full h-12 font-bold rounded-lg"
-        onClick={() => onSave(formData)}
+        onClick={() => onSave({ ...formData, totalKcal })}
         disabled={isSaving}
       >
         <Save className="w-5 h-5 mr-2" /> Opslaan
