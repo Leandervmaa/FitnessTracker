@@ -2,7 +2,7 @@ import { Link } from "wouter";
 import { useEffect, useState } from "react";
 import { useWeek } from "@/components/week-context";
 import { useListWeeks } from "@workspace/api-client-react";
-import { Dumbbell, Book, MessageSquare, ChevronDown, Settings, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Dumbbell, Book, MessageSquare, ChevronDown, Settings, AlertCircle, CheckCircle2, FileSpreadsheet } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 
@@ -66,7 +66,7 @@ export default function Home() {
 
       <div className="mt-4 mb-10 flex flex-col items-center">
         <img src="/images/logo.png" alt="Bodyrebuild Logo" className="h-20 w-20 object-contain mb-4 drop-shadow-md" />
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">TEST GITHUB SYNC</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">Mijn Fitness Tracker</h1>
       </div>
 
       <div className="w-full flex flex-col gap-4">
@@ -108,7 +108,12 @@ export default function Home() {
       </div>
 
       {weeks && selectedWeek && (
-        <div className="fixed bottom-6 right-6">
+        <div className="fixed bottom-6 right-6 flex items-center gap-2">
+          <a href="/api/upload/excel/download" download>
+            <Button variant="outline" size="icon" className="rounded-full shadow-md bg-card border-border h-12 w-12 flex-shrink-0" title="Bekijk/Download Excel schema">
+              <FileSpreadsheet className="h-5 w-5 text-green-600 dark:text-green-400" />
+            </Button>
+          </a>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" className="rounded-full shadow-md bg-card border-border h-12 px-4 font-semibold">

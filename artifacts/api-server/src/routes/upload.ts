@@ -63,4 +63,12 @@ router.delete("/excel", (_req, res) => {
   }
 });
 
+router.get("/excel/download", (_req, res) => {
+  if (fs.existsSync(EXCEL_PATH)) {
+    res.download(EXCEL_PATH, "Fitness_Progressie.xlsx");
+  } else {
+    res.status(404).json({ error: "Geen Excel-bestand aanwezig." });
+  }
+});
+
 export default router;
