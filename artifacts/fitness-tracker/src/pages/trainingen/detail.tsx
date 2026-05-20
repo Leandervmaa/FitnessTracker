@@ -123,10 +123,32 @@ export default function TrainingDetail() {
   // Use generated images based on typical exercises
   const getExerciseImage = (name: string) => {
     const lowerName = name.toLowerCase();
-    if (lowerName.includes("squat")) return "/images/squat.png";
-    if (lowerName.includes("bench") || lowerName.includes("druk")) return "/images/bench-press.png";
-    if (lowerName.includes("deadlift")) return "/images/deadlift.png";
-    return "/images/generic-muscles.png"; // Fallback voor alle oefeningen
+    
+    // Benen & Billen
+    if (lowerName.includes("front squat")) return "/images/frontsquat_muscles.png";
+    if (lowerName.includes("squat")) return "/images/squat_muscles.png";
+    if (lowerName.includes("roemeense") || lowerName.includes("rdl")) return "/images/rdl_muscles.png";
+    if (lowerName.includes("sumo deadlift") || lowerName.includes("deadlift")) return "/images/rdl_muscles.png"; // Fallback to RDL for deadlift
+    if (lowerName.includes("leg press")) return "/images/legpress_muscles.png";
+    if (lowerName.includes("leg curl")) return "/images/legcurl_muscles.png";
+    if (lowerName.includes("hip thrust")) return "/images/hipthrust_muscles.png";
+    
+    // Borst & Schouders & Triceps
+    if (lowerName.includes("incline") && lowerName.includes("press")) return "/images/inclinepress_muscles.png";
+    if (lowerName.includes("bench press") || lowerName.includes("druk")) return "/images/benchpress_muscles.png";
+    if (lowerName.includes("push press")) return "/images/pushpress_muscles.png";
+    if (lowerName.includes("schouderpers") || lowerName.includes("shoulder press")) return "/images/schouderpers_muscles.png";
+    if (lowerName.includes("lateral raise")) return "/images/lateralraise_muscles.png";
+    if (lowerName.includes("dip")) return "/images/tricepdip_muscles.png";
+    
+    // Rug & Biceps
+    if (lowerName.includes("pull-up") || lowerName.includes("pulldown")) return "/images/pullup_muscles.png";
+    if (lowerName.includes("row")) return "/images/barbellrow_muscles.png";
+    if (lowerName.includes("bicep curl") || lowerName.includes("curl")) return "/images/bicepcurl_muscles.png";
+    if (lowerName.includes("face pull")) return "/images/facepull_muscles.png";
+    
+    // Default fallback
+    return "/images/generic-muscles.png";
   };
 
   const imageUrl = exercise.imageUrl || getExerciseImage(exercise.name);
