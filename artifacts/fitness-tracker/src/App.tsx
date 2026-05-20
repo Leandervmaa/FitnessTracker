@@ -8,7 +8,7 @@ import NotFound from "@/pages/not-found";
 import Home from "@/pages/home";
 import TrainingList from "@/pages/trainingen/index";
 import TrainingDetail from "@/pages/trainingen/detail";
-import NutritionList from "@/pages/voeding/index";
+import NutritionList from "@/pages/dagboek/index";
 import FeedbackList from "@/pages/feedback/index";
 import Instellen from "@/pages/instellen/index";
 
@@ -20,7 +20,7 @@ function Router() {
       <Route path="/" component={Home} />
       <Route path="/trainingen" component={TrainingList} />
       <Route path="/trainingen/:workoutId" component={TrainingDetail} />
-      <Route path="/voeding" component={NutritionList} />
+      <Route path="/dagboek" component={NutritionList} />
       <Route path="/feedback" component={FeedbackList} />
       <Route path="/instellen" component={Instellen} />
       <Route component={NotFound} />

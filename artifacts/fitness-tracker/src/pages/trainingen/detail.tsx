@@ -126,7 +126,7 @@ export default function TrainingDetail() {
     if (lowerName.includes("squat")) return "/images/squat.png";
     if (lowerName.includes("bench") || lowerName.includes("druk")) return "/images/bench-press.png";
     if (lowerName.includes("deadlift")) return "/images/deadlift.png";
-    return null; // Fallback
+    return "/images/generic-muscles.png"; // Fallback voor alle oefeningen
   };
 
   const imageUrl = exercise.imageUrl || getExerciseImage(exercise.name);
@@ -173,25 +173,7 @@ export default function TrainingDetail() {
           </div>
         </div>
 
-        {(exercise.previousWeekWeight !== null || exercise.previousWeekReps) && (
-          <div className="bg-secondary/50 rounded-xl p-4 mb-6 border border-border/50">
-            <div className="text-sm font-semibold text-muted-foreground mb-2">Vorige week</div>
-            <div className="flex gap-4">
-              {exercise.previousWeekWeight !== null && (
-                <div>
-                  <span className="text-2xl font-bold text-foreground">{exercise.previousWeekWeight}</span>
-                  <span className="text-muted-foreground text-sm ml-1">kg</span>
-                </div>
-              )}
-              {exercise.previousWeekReps && (
-                <div>
-                  <span className="text-2xl font-bold text-foreground">{exercise.previousWeekReps}</span>
-                  <span className="text-muted-foreground text-sm ml-1">reps</span>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+
 
         <div className="flex flex-col gap-5">
           {Array.from({ length: exercise.sets || 1 }).map((_, idx) => (

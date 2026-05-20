@@ -162,28 +162,70 @@ export default function NutritionList() {
 }
 
 function NutritionDayForm({ day, entry, target, onSave, isSaving }: { day: any, entry?: any, target?: any, onSave: (data: any) => void, isSaving: boolean }) {
-  const [formData, setFormData] = useState({
-    kcal: entry?.kcal?.toString() || "",
-    eiwittenG: entry?.eiwittenG?.toString() || "",
-    koolhydratenG: entry?.koolhydratenG?.toString() || "",
-    vetenG: entry?.vetenG?.toString() || "",
-    waterMl: entry?.waterMl?.toString() || "",
-    notes: entry?.notes || ""
+  const [formData, setFormData] = useState(() => {
+    let parsedNotes: any = {};
+    let pureNotes = entry?.notes || "";
+    try {
+      if (pureNotes.startsWith("{")) {
+        const parsed = JSON.parse(pureNotes);
+        parsedNotes = parsed.metrics || {};
+        pureNotes = parsed.text || "";
+      }
+    } catch(e) {}
+
+    return {
+      kcal: entry?.kcal?.toString() || target?.kcal?.toString() || "",
+      eiwittenG: entry?.eiwittenG?.toString() || target?.eiwittenG?.toString() || "",
+      koolhydratenG: entry?.koolhydratenG?.toString() || target?.koolhydratenG?.toString() || "",
+      vetenG: entry?.vetenG?.toString() || target?.vetenG?.toString() || "",
+      waterMl: entry?.waterMl?.toString() || target?.waterMl?.toString() || "",
+      slaapUren: parsedNotes.slaapUren || "",
+      stressNiveau: parsedNotes.stressNiveau || "",
+      energieNiveau: parsedNotes.energieNiveau || "",
+      lichaamsgewicht: parsedNotes.lichaamsgewicht || "",
+      notes: pureNotes
+    };
   });
 
   useEffect(() => {
+    let parsedNotes: any = {};
+    let pureNotes = entry?.notes || "";
+    try {
+      if (pureNotes.startsWith("{")) {
+        const parsed = JSON.parse(pureNotes);
+        parsedNotes = parsed.metrics || {};
+        pureNotes = parsed.text || "";
+      }
+    } catch(e) {}
+
     setFormData({
-      kcal: entry?.kcal?.toString() || "",
-      eiwittenG: entry?.eiwittenG?.toString() || "",
-      koolhydratenG: entry?.koolhydratenG?.toString() || "",
-      vetenG: entry?.vetenG?.toString() || "",
-      waterMl: entry?.waterMl?.toString() || "",
-      notes: entry?.notes || ""
+      kcal: entry?.kcal?.toString() || target?.kcal?.toString() || "",
+      eiwittenG: entry?.eiwittenG?.toString() || target?.eiwittenG?.toString() || "",
+      koolhydratenG: entry?.koolhydratenG?.toString() || target?.koolhydratenG?.toString() || "",
+      vetenG: entry?.vetenG?.toString() || target?.vetenG?.toString() || "",
+      waterMl: entry?.waterMl?.toString() || target?.waterMl?.toString() || "",
+      slaapUren: parsedNotes.slaapUren || "",
+      stressNiveau: parsedNotes.stressNiveau || "",
+      energieNiveau: parsedNotes.energieNiveau || "",
+      lichaamsgewicht: parsedNotes.lichaamsgewicht || "",
+      notes: pureNotes
     });
-  }, [entry]);
+  }, [entry, target]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
+  };
+
+  const handleSaveWrapper = () => {
+    const payload = { ...formData };
+    const metrics = {
+      slaapUren: payload.slaapUren,
+      stressNiveau: payload.stressNiveau,
+      energieNiveau: payload.energieNiveau,
+      lichaamsgewicht: payload.lichaamsgewicht
+    };
+    payload.notes = JSON.stringify({ metrics, text: payload.notes });
+    onSave(payload);
   };
 
   return (
@@ -228,14 +270,55 @@ function NutritionDayForm({ day, entry, target, onSave, isSaving }: { day: any, 
         </div>
       </div>
 
-      <div className="space-y-2">
-        <Label className="text-sm font-semibold">Water (ml)</Label>
-        <Input 
-          type="number" inputMode="numeric"
-          name="waterMl" value={formData.waterMl} onChange={handleChange}
-          className="h-12 px-4" 
-          placeholder={target?.waterMl ? `Doel: ${target.waterMl} ml` : "Bijv. 3000"}
-        />
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label className="text-sm font-semibold">Water (ml)</Label>
+          <Input 
+            type="number" inputMode="numeric"
+            name="waterMl" value={formData.waterMl} onChange={handleChange}
+            className="h-12 px-4" 
+            placeholder={target?.waterMl ? `Doel: ${target.waterMl} ml` : "Bijv. 3000"}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label className="text-sm font-semibold">Lichaamsgewicht (kg)</Label>
+          <Input 
+            type="number" inputMode="decimal"
+            name="lichaamsgewicht" value={formData.lichaamsgewicht} onChange={handleChange}
+            className="h-12 px-4" 
+            placeholder="Bijv. 80.5"
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-4">
+        <div className="space-y-2">
+          <Label className="text-sm font-semibold">Slaap (uren)</Label>
+          <Input 
+            type="number" inputMode="decimal"
+            name="slaapUren" value={formData.slaapUren} onChange={handleChange}
+            className="h-12 text-center" 
+            placeholder="Bijv. 8"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label className="text-sm font-semibold">Stress (1-10)</Label>
+          <Input 
+            type="number" inputMode="numeric"
+            name="stressNiveau" value={formData.stressNiveau} onChange={handleChange}
+            className="h-12 text-center" 
+            placeholder="1-10"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label className="text-sm font-semibold">Energie (1-10)</Label>
+          <Input 
+            type="number" inputMode="numeric"
+            name="energieNiveau" value={formData.energieNiveau} onChange={handleChange}
+            className="h-12 text-center" 
+            placeholder="1-10"
+          />
+        </div>
       </div>
 
       <div className="space-y-2">
@@ -248,7 +331,7 @@ function NutritionDayForm({ day, entry, target, onSave, isSaving }: { day: any, 
 
       <Button 
         className="w-full h-12 font-bold rounded-lg" 
-        onClick={() => onSave(formData)}
+        onClick={handleSaveWrapper}
         disabled={isSaving}
       >
         <Save className="w-5 h-5 mr-2" /> Opslaan
