@@ -88,6 +88,10 @@ export default function DagboekPage() {
     
     const dayInfo = DAYS.find(d => d.id === dayId);
     const entry = entries?.find(e => e.day === dayId);
+
+    // totalKcal is computed directly in DagForm from useFoodLogs + manualKcal
+    // No callback timing issues — value is reliable at click time
+    const totalKcal = data.totalKcal as number;
     
     const metrics = {
       slaapUren:       data.slaapUren,
@@ -105,11 +109,11 @@ export default function DagboekPage() {
       weekNumber: selectedWeek,
       day: dayId,
       dayLabel: dayInfo?.nl || dayId,
-      kcal:           data.totalKcal > 0 ? data.totalKcal : null,
-      eiwittenG:      null as number | null,
-      koolhydratenG:  null as number | null,
-      vetenG:         null as number | null,
-      waterMl:        null as number | null,
+      kcal:          totalKcal > 0 ? totalKcal : null,
+      eiwittenG:     null as number | null,
+      koolhydratenG: null as number | null,
+      vetenG:        null as number | null,
+      waterMl:       null as number | null,
       notes: JSON.stringify({ metrics, text: data.notes || "" }),
     };
 
@@ -200,7 +204,6 @@ export default function DagboekPage() {
                   className="flex-1 h-full rounded-md font-bold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all relative"
                 >
                   {day.label}
-                  {/* Dot indicator: green = app-data saved, amber = only sheet data */}
                   {dbEntry && (
                     <span className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-primary" />
                   )}
@@ -258,21 +261,19 @@ function DagForm({ day, weekNumber, entry, sheetDay, onSave, isSaving }: {
   const buildForm = () => {
     const { metrics, notes } = parseEntry(entry);
     return {
-      kcal:           entry?.kcal?.toString()            || "",
       lichaamsgewicht: metrics.lichaamsgewicht            || "",
-      buikomvang:     metrics.buikomvang                  || "",
-      heupomvang:     metrics.heupomvang                  || "",
-      krachtniveau:   metrics.krachtniveau                || "",
-      energieNiveau:  metrics.energieNiveau               || "",
-      slaapUren:      metrics.slaapUren                   || "",
-      stressNiveau:   metrics.stressNiveau                || "",
-      stappen:        metrics.stappen                     || "",
+      buikomvang:      metrics.buikomvang                 || "",
+      heupomvang:      metrics.heupomvang                 || "",
+      krachtniveau:    metrics.krachtniveau               || "",
+      energieNiveau:   metrics.energieNiveau              || "",
+      slaapUren:       metrics.slaapUren                  || "",
+      stressNiveau:    metrics.stressNiveau               || "",
+      stappen:         metrics.stappen                    || "",
       notes,
     };
   };
 
   const [formData, setFormData] = useState(buildForm);
-  const [totalKcal, setTotalKcal] = useState<number>(0);
 
   useEffect(() => {
     setFormData(buildForm());
@@ -284,7 +285,7 @@ function DagForm({ day, weekNumber, entry, sheetDay, onSave, isSaving }: {
 
   const hasDbEntry = !!entry;
 
-  // Restore manualKcal from saved entry; update when entry changes
+  // ── Restore saved manual kcal from DB notes ───────────────────────────────
   const [currentManualKcal, setCurrentManualKcal] = useState<number>(() => {
     const { metrics } = parseEntry(entry);
     return parseFloat(metrics.manualKcal || "0") || 0;
@@ -294,6 +295,15 @@ function DagForm({ day, weekNumber, entry, sheetDay, onSave, isSaving }: {
     const { metrics } = parseEntry(entry);
     setCurrentManualKcal(parseFloat(metrics.manualKcal || "0") || 0);
   }, [entry?.id]);
+
+  // ── Load food_logs for this day directly — reliable at save time ──────────
+  const { data: foodLogs = [] } = useFoodLogs(weekNumber, day.id);
+  const loggedKcal = Math.round(
+    foodLogs.reduce((sum, l) => sum + parseFloat(l.kcal || "0"), 0)
+  );
+
+  // This is the authoritative total — computed from live data, not callbacks
+  const totalKcal = currentManualKcal + loggedKcal;
 
   // Helper: show sheet value as placeholder hint
   const ph = (val: number | null | undefined, suffix = "") =>
@@ -364,14 +374,13 @@ function DagForm({ day, weekNumber, entry, sheetDay, onSave, isSaving }: {
           dayLabel={day.nl}
           sheetKcal={sheetDay?.kcal ?? null}
           savedManualKcal={currentManualKcal}
-          onTotalKcalChange={setTotalKcal}
           onManualKcalChange={setCurrentManualKcal}
         />
       </div>
 
       {/* Sectie: Welzijn */}
       <div>
-        <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Welzijn & Prestatie</p>
+        <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Welzijn &amp; Prestatie</p>
         <div className="grid grid-cols-2 gap-3 mb-3">
           <div className="space-y-1.5">
             <Label className="text-xs font-semibold">Energieniveau (0-10)</Label>
