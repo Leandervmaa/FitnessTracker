@@ -90,25 +90,26 @@ export default function DagboekPage() {
     const entry = entries?.find(e => e.day === dayId);
     
     const metrics = {
-      slaapUren: data.slaapUren,
-      stressNiveau: data.stressNiveau,
-      energieNiveau: data.energieNiveau,
-      krachtniveau: data.krachtniveau,
+      slaapUren:       data.slaapUren,
+      stressNiveau:    data.stressNiveau,
+      energieNiveau:   data.energieNiveau,
+      krachtniveau:    data.krachtniveau,
       lichaamsgewicht: data.lichaamsgewicht,
-      buikomvang: data.buikomvang,
-      heupomvang: data.heupomvang,
-      stappen: data.stappen,
+      buikomvang:      data.buikomvang,
+      heupomvang:      data.heupomvang,
+      stappen:         data.stappen,
+      manualKcal:      data.manualKcal > 0 ? String(data.manualKcal) : "",
     };
 
     const payload = {
       weekNumber: selectedWeek,
       day: dayId,
       dayLabel: dayInfo?.nl || dayId,
-      kcal: data.totalKcal > 0 ? data.totalKcal : null,
-      eiwittenG: null as number | null,
-      koolhydratenG: null as number | null,
-      vetenG: null as number | null,
-      waterMl: null as number | null,
+      kcal:           data.totalKcal > 0 ? data.totalKcal : null,
+      eiwittenG:      null as number | null,
+      koolhydratenG:  null as number | null,
+      vetenG:         null as number | null,
+      waterMl:        null as number | null,
       notes: JSON.stringify({ metrics, text: data.notes || "" }),
     };
 
@@ -283,6 +284,17 @@ function DagForm({ day, weekNumber, entry, sheetDay, onSave, isSaving }: {
 
   const hasDbEntry = !!entry;
 
+  // Restore manualKcal from saved entry; update when entry changes
+  const [currentManualKcal, setCurrentManualKcal] = useState<number>(() => {
+    const { metrics } = parseEntry(entry);
+    return parseFloat(metrics.manualKcal || "0") || 0;
+  });
+
+  useEffect(() => {
+    const { metrics } = parseEntry(entry);
+    setCurrentManualKcal(parseFloat(metrics.manualKcal || "0") || 0);
+  }, [entry?.id]);
+
   // Helper: show sheet value as placeholder hint
   const ph = (val: number | null | undefined, suffix = "") =>
     val !== null && val !== undefined ? `${val}${suffix} (sheet)` : "";
@@ -346,11 +358,14 @@ function DagForm({ day, weekNumber, entry, sheetDay, onSave, isSaving }: {
       <div>
         <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">Voeding</p>
         <FoodTracker
+          key={`food-${day.id}-${entry?.id ?? 'new'}`}
           weekNumber={weekNumber}
           day={day.id}
           dayLabel={day.nl}
           sheetKcal={sheetDay?.kcal ?? null}
+          savedManualKcal={currentManualKcal}
           onTotalKcalChange={setTotalKcal}
+          onManualKcalChange={setCurrentManualKcal}
         />
       </div>
 
@@ -419,7 +434,7 @@ function DagForm({ day, weekNumber, entry, sheetDay, onSave, isSaving }: {
 
       <Button
         className="w-full h-12 font-bold rounded-lg"
-        onClick={() => onSave({ ...formData, totalKcal })}
+        onClick={() => onSave({ ...formData, totalKcal, manualKcal: currentManualKcal })}
         disabled={isSaving}
       >
         <Save className="w-5 h-5 mr-2" /> Opslaan

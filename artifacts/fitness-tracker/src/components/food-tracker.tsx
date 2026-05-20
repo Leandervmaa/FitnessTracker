@@ -356,14 +356,24 @@ interface Props {
   day: string;
   dayLabel: string;
   sheetKcal?: number | null;
+  savedManualKcal?: number;           // restored from DB on load
   onTotalKcalChange?: (totalKcal: number) => void;
+  onManualKcalChange?: (manual: number) => void; // so parent can persist it
 }
 
-export default function FoodTracker({ weekNumber, day, dayLabel, sheetKcal, onTotalKcalChange }: Props) {
+export default function FoodTracker({ weekNumber, day, dayLabel, sheetKcal, savedManualKcal, onTotalKcalChange, onManualKcalChange }: Props) {
   const { toast } = useToast();
   const qc = useQueryClient();
 
-  const [manualKcal, setManualKcal] = useState("");
+  // Initialize from saved value if provided (restored from DB)
+  const [manualKcal, setManualKcalRaw] = useState(
+    savedManualKcal != null && savedManualKcal > 0 ? String(savedManualKcal) : ""
+  );
+
+  const setManualKcal = useCallback((val: string) => {
+    setManualKcalRaw(val);
+    onManualKcalChange?.(parseFloat(val) || 0);
+  }, [onManualKcalChange]);
   const [showSearch, setShowSearch] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
   const [barcodeLoadingId, setBarcodeLoadingId] = useState<string | null>(null);
