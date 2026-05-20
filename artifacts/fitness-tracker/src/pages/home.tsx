@@ -2,7 +2,7 @@ import { Link } from "wouter";
 import { useEffect, useState } from "react";
 import { useWeek } from "@/components/week-context";
 import { useListWeeks } from "@workspace/api-client-react";
-import { Dumbbell, Book, MessageSquare, ChevronDown, Settings, AlertCircle, CheckCircle2, FileSpreadsheet, Download } from "lucide-react";
+import { Dumbbell, Book, MessageSquare, ChevronDown, Settings, AlertCircle, CheckCircle2, FileSpreadsheet, Download, Camera } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 
@@ -113,6 +113,18 @@ export default function Home() {
             <div>
               <h2 className="text-xl font-bold text-card-foreground">Dagboek</h2>
               <p className="text-sm text-muted-foreground">Houd je dagelijkse metingen bij</p>
+            </div>
+          </div>
+        </Link>
+
+        <Link href="/progressie-fotos" className="w-full">
+          <div className="w-full bg-card border border-border rounded-xl p-6 flex items-center shadow-sm hover-elevate transition-all cursor-pointer">
+            <div className="h-12 w-12 bg-purple-500/10 text-purple-600 dark:text-purple-400 rounded-lg flex items-center justify-center mr-4">
+              <Camera size={24} />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-card-foreground">Progressie foto's</h2>
+              <p className="text-sm text-muted-foreground">Voor-, zij- en achterkantfoto's per fase</p>
             </div>
           </div>
         </Link>

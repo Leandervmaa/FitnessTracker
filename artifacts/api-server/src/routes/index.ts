@@ -8,6 +8,7 @@ import feedbackRouter, { feedbackQuestionsRouter } from "./feedback";
 import uploadRouter from "./upload";
 import dataStatusRouter from "./dataStatus";
 import exportRouter from "./export";
+import progressPhotosRouter from "./progressPhotos";
 
 const router: IRouter = Router();
 
@@ -21,5 +22,6 @@ router.use("/feedback", feedbackRouter);
 router.use("/upload", uploadRouter);
 router.use("/data-status", dataStatusRouter);
 router.use("/export", exportRouter);
+router.use("/progress-photos", progressPhotosRouter);
 
 export default router;
