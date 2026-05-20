@@ -66,7 +66,7 @@ export default function Home() {
 
       <div className="mt-4 mb-10 flex flex-col items-center">
         <img src="/images/logo.png" alt="Bodyrebuild Logo" className="h-20 w-20 object-contain mb-4 drop-shadow-md" />
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">Mijn Fitness Tracker</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">TEST GITHUB SYNC</h1>
       </div>
 
       <div className="w-full flex flex-col gap-4">
