@@ -136,6 +136,35 @@ function ListView({ photos }: { photos: Photo[] }) {
 
   return (
     <div className="w-full p-4 space-y-4">
+
+      {/* Tips banner */}
+      <div className="bg-amber-500/10 border border-amber-500/25 rounded-xl p-4">
+        <div className="flex items-start gap-3">
+          <div className="h-8 w-8 bg-amber-500/20 rounded-lg flex items-center justify-center shrink-0 mt-0.5">
+            <span className="text-base">📸</span>
+          </div>
+          <div>
+            <p className="font-bold text-sm text-amber-700 dark:text-amber-400 mb-1">
+              Tips voor de beste resultaten
+            </p>
+            <ul className="text-xs text-amber-700/80 dark:text-amber-400/80 space-y-1">
+              <li className="flex items-start gap-1.5">
+                <span className="mt-0.5">🌅</span>
+                <span><strong>'s Ochtends</strong> vóór het ontbijt, na het toilet</span>
+              </li>
+              <li className="flex items-start gap-1.5">
+                <span className="mt-0.5">📍</span>
+                <span>Altijd op <strong>dezelfde plek</strong> staan</span>
+              </li>
+              <li className="flex items-start gap-1.5">
+                <span className="mt-0.5">💡</span>
+                <span><strong>Zelfde belichting</strong> elke keer — bijv. raam aan dezelfde kant</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
       {PHOTO_WEEKS.map(week => (
         <WeekCard key={week} weekNumber={week} photoMap={photoMap} />
       ))}
@@ -216,7 +245,6 @@ function PhotoSlot({ weekNumber, angle, label, photo }: {
         ref={inputRef}
         type="file"
         accept="image/*"
-        capture="environment"
         onChange={handleFile}
         className="hidden"
       />
