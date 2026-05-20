@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { nutritionEntriesTable } from "@workspace/db";
 import { CreateNutritionEntryBody, UpdateNutritionEntryBody, UpdateNutritionEntryParams, GetNutritionEntriesQueryParams } from "@workspace/api-zod";
-import { getNutritionTarget, getWeekNutrition } from "../services/dataService.js";
+import { getNutritionTarget, getProgressieWeek } from "../services/dataService.js";
 import { eq, and } from "drizzle-orm";
 
 const router = Router();
@@ -26,28 +26,20 @@ router.get("/target", async (req, res) => {
   }
 });
 
-/** Per-week nutrition targets (from Progressie sheet) */
-router.get("/target/:weekNumber", async (req, res) => {
+/** Per-week progression data from Progressie sheet (all 7 days with measurements) */
+router.get("/progressie/:weekNumber", async (req, res) => {
   try {
     const weekNumber = parseInt(req.params.weekNumber, 10);
     if (isNaN(weekNumber)) return void res.status(400).json({ error: "Ongeldig weeknummer" });
 
-    const weekData = getWeekNutrition(weekNumber);
+    const weekData = getProgressieWeek(weekNumber);
     if (!weekData) {
-      return void res.status(404).json({ error: "Geen week-doelen gevonden" });
+      return void res.status(404).json({ error: "Geen progressie-data gevonden voor deze week" });
     }
 
-    return void res.json({
-      weekNumber: weekData.weekNumber,
-      kcal: weekData.kcal,
-      eiwittenG: weekData.eiwitten,
-      koolhydratenG: weekData.koolhydraten,
-      vetenG: weekData.vetten,
-      waterMl: weekData.waterL ? weekData.waterL * 1000 : null,
-      lichaamsgewicht: weekData.lichaamsgewicht,
-    });
+    return void res.json(weekData);
   } catch (err) {
-    req.log.error({ err }, "Failed to get week nutrition target");
+    req.log.error({ err }, "Failed to get progressie week");
     return void res.status(500).json({ error: "Interne serverfout" });
   }
 });

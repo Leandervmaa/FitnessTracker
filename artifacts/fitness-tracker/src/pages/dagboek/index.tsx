@@ -9,7 +9,7 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { ChevronLeft, BookOpen, Save, TrendingUp } from "lucide-react";
+import { ChevronLeft, BookOpen, Save, TrendingUp, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,39 +18,42 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 
 const DAYS = [
-  { id: "mon", label: "Ma" },
-  { id: "tue", label: "Di" },
-  { id: "wed", label: "Wo" },
-  { id: "thu", label: "Do" },
-  { id: "fri", label: "Vr" },
-  { id: "sat", label: "Za" },
-  { id: "sun", label: "Zo" }
+  { id: "mon", label: "Ma", nl: "Maandag" },
+  { id: "tue", label: "Di", nl: "Dinsdag" },
+  { id: "wed", label: "Wo", nl: "Woensdag" },
+  { id: "thu", label: "Do", nl: "Donderdag" },
+  { id: "fri", label: "Vr", nl: "Vrijdag" },
+  { id: "sat", label: "Za", nl: "Zaterdag" },
+  { id: "sun", label: "Zo", nl: "Zondag" },
 ];
 
-interface WeekTarget {
-  weekNumber: number;
+interface ProgressieDay {
+  dagNl: string;
+  dayId: string;
+  gewicht: number | null;
   kcal: number | null;
-  eiwittenG: number | null;
-  koolhydratenG: number | null;
-  vetenG: number | null;
-  waterMl: number | null;
-  lichaamsgewicht: number | null;
+  buikomvang: number | null;
+  heupomvang: number | null;
+  krachtniveau: number | null;
+  energieniveau: number | null;
+  slaap: number | null;
+  stress: number | null;
+  stappen: number | null;
 }
 
-function useWeekTarget(weekNumber: number | undefined) {
-  return useQuery<WeekTarget | null>({
-    queryKey: ["nutrition-week-target", weekNumber],
+interface ProgressieWeek {
+  weekNumber: number;
+  days: ProgressieDay[];
+}
+
+function useProgressieWeek(weekNumber: number | undefined) {
+  return useQuery<ProgressieWeek | null>({
+    queryKey: ["progressie-week", weekNumber],
     queryFn: async () => {
       if (!weekNumber) return null;
       try {
-        const res = await fetch(`/api/nutrition/target/${weekNumber}`);
-        if (!res.ok) {
-          // Try global target as fallback
-          const fallback = await fetch(`/api/nutrition/target`);
-          if (!fallback.ok) return null;
-          const data = await fallback.json();
-          return { ...data, weekNumber, lichaamsgewicht: null };
-        }
+        const res = await fetch(`/api/nutrition/progressie/${weekNumber}`);
+        if (!res.ok) return null;
         return await res.json();
       } catch {
         return null;
@@ -69,7 +72,7 @@ export default function DagboekPage() {
   
   const [activeDay, setActiveDay] = useState(DAYS[0].id);
 
-  const { data: weekTarget } = useWeekTarget(selectedWeek ?? undefined);
+  const { data: progressieWeek } = useProgressieWeek(selectedWeek ?? undefined);
 
   const { data: entries } = useGetNutritionEntries(
     { weekNumber: selectedWeek || 0 },
@@ -82,26 +85,37 @@ export default function DagboekPage() {
   const handleSave = (dayId: string, data: any) => {
     if (!selectedWeek) return;
     
-    const dayLabel = DAYS.find(d => d.id === dayId)?.label || "";
+    const dayInfo = DAYS.find(d => d.id === dayId);
     const entry = entries?.find(e => e.day === dayId);
     
+    const metrics = {
+      slaapUren: data.slaapUren,
+      stressNiveau: data.stressNiveau,
+      energieNiveau: data.energieNiveau,
+      krachtniveau: data.krachtniveau,
+      lichaamsgewicht: data.lichaamsgewicht,
+      buikomvang: data.buikomvang,
+      heupomvang: data.heupomvang,
+      stappen: data.stappen,
+    };
+
     const payload = {
       weekNumber: selectedWeek,
       day: dayId,
-      dayLabel,
+      dayLabel: dayInfo?.nl || dayId,
       kcal: data.kcal ? parseInt(data.kcal) : null,
-      eiwittenG: data.eiwittenG ? parseInt(data.eiwittenG) : null,
-      koolhydratenG: data.koolhydratenG ? parseInt(data.koolhydratenG) : null,
-      vetenG: data.vetenG ? parseInt(data.vetenG) : null,
-      waterMl: data.waterMl ? parseInt(data.waterMl) : null,
-      notes: data.notes || null
+      eiwittenG: null as number | null,
+      koolhydratenG: null as number | null,
+      vetenG: null as number | null,
+      waterMl: null as number | null,
+      notes: JSON.stringify({ metrics, text: data.notes || "" }),
     };
 
     const onSuccess = () => {
       queryClient.invalidateQueries({ queryKey: getGetNutritionEntriesQueryKey({ weekNumber: selectedWeek }) });
       toast({
-        title: "Opgeslagen",
-        description: `Voeding voor ${dayLabel} is succesvol opgeslagen.`,
+        title: "Opgeslagen ✓",
+        description: `${dayInfo?.nl} week ${selectedWeek} is opgeslagen.`,
       });
     };
 
@@ -111,6 +125,10 @@ export default function DagboekPage() {
       createEntry.mutate({ data: payload }, { onSuccess });
     }
   };
+
+  // Weekly summary from sheet data
+  const sheetDays = progressieWeek?.days || [];
+  const hasSheetData = sheetDays.length > 0;
 
   return (
     <div className="min-h-[100dvh] w-full bg-background flex flex-col items-center max-w-md mx-auto">
@@ -125,47 +143,44 @@ export default function DagboekPage() {
         <WeekSelector />
       </header>
 
-      {weekTarget && (
+      {/* Week overview strip from sheet */}
+      {hasSheetData && (
         <div className="w-full px-4 pt-4">
           <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
             <h3 className="text-xs font-bold text-muted-foreground mb-3 flex items-center gap-1.5 uppercase tracking-wider">
               <TrendingUp className="h-3.5 w-3.5 text-primary" />
-              Week {selectedWeek} — Doelstellingen
+              Week {selectedWeek} — Gemiddelden uit spreadsheet
             </h3>
-            <div className="grid grid-cols-2 gap-3 mb-3">
-              <div className="bg-secondary/40 border border-border/60 rounded-lg p-2.5 flex flex-col">
-                <span className="text-[10px] text-muted-foreground font-bold uppercase">Energie</span>
-                <span className="text-base font-black text-foreground mt-0.5">
-                  {weekTarget.kcal ? `${weekTarget.kcal} kcal` : "—"}
-                </span>
-              </div>
-              <div className="bg-secondary/40 border border-border/60 rounded-lg p-2.5 flex flex-col">
-                <span className="text-[10px] text-muted-foreground font-bold uppercase">Water</span>
-                <span className="text-base font-black text-foreground mt-0.5">
-                  {weekTarget.waterMl ? `${weekTarget.waterMl / 1000} L` : "—"}
-                </span>
-              </div>
+            <div className="grid grid-cols-4 gap-2">
+              {(() => {
+                const filled = sheetDays.filter(d => d.gewicht !== null);
+                const avgGewicht = filled.length > 0 ? (filled.reduce((s, d) => s + (d.gewicht ?? 0), 0) / filled.length).toFixed(1) : "—";
+                const filledKcal = sheetDays.filter(d => d.kcal !== null);
+                const avgKcal = filledKcal.length > 0 ? Math.round(filledKcal.reduce((s, d) => s + (d.kcal ?? 0), 0) / filledKcal.length) : null;
+                const lastBuik = [...sheetDays].reverse().find(d => d.buikomvang !== null)?.buikomvang;
+                const lastHeup = [...sheetDays].reverse().find(d => d.heupomvang !== null)?.heupomvang;
+                return (
+                  <>
+                    <div className="bg-secondary/40 border border-border/60 rounded-lg p-2 text-center">
+                      <div className="text-[9px] text-muted-foreground font-bold uppercase">Gewicht</div>
+                      <div className="text-sm font-black mt-0.5">{avgGewicht} kg</div>
+                    </div>
+                    <div className="bg-secondary/40 border border-border/60 rounded-lg p-2 text-center">
+                      <div className="text-[9px] text-muted-foreground font-bold uppercase">Kcal</div>
+                      <div className="text-sm font-black mt-0.5">{avgKcal ?? "—"}</div>
+                    </div>
+                    <div className="bg-secondary/40 border border-border/60 rounded-lg p-2 text-center">
+                      <div className="text-[9px] text-muted-foreground font-bold uppercase">Buik</div>
+                      <div className="text-sm font-black mt-0.5">{lastBuik ?? "—"} cm</div>
+                    </div>
+                    <div className="bg-secondary/40 border border-border/60 rounded-lg p-2 text-center">
+                      <div className="text-[9px] text-muted-foreground font-bold uppercase">Heup</div>
+                      <div className="text-sm font-black mt-0.5">{lastHeup ?? "—"} cm</div>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
-            <div className="grid grid-cols-3 gap-2 mb-3">
-              <div className="bg-secondary/20 border border-border/40 rounded-lg p-2 text-center">
-                <div className="text-[9px] text-primary font-bold uppercase">Eiwit</div>
-                <div className="text-xs font-extrabold mt-0.5">{weekTarget.eiwittenG ? `${weekTarget.eiwittenG}g` : "—"}</div>
-              </div>
-              <div className="bg-secondary/20 border border-border/40 rounded-lg p-2 text-center">
-                <div className="text-[9px] text-orange-500 font-bold uppercase">Koolhydraten</div>
-                <div className="text-xs font-extrabold mt-0.5">{weekTarget.koolhydratenG ? `${weekTarget.koolhydratenG}g` : "—"}</div>
-              </div>
-              <div className="bg-secondary/20 border border-border/40 rounded-lg p-2 text-center">
-                <div className="text-[9px] text-amber-500 font-bold uppercase">Vetten</div>
-                <div className="text-xs font-extrabold mt-0.5">{weekTarget.vetenG ? `${weekTarget.vetenG}g` : "—"}</div>
-              </div>
-            </div>
-            {weekTarget.lichaamsgewicht && (
-              <div className="bg-primary/10 border border-primary/20 rounded-lg p-2.5 flex items-center justify-between">
-                <span className="text-[10px] text-primary font-bold uppercase">Gewicht doel (sheet)</span>
-                <span className="text-sm font-black text-primary">{weekTarget.lichaamsgewicht} kg</span>
-              </div>
-            )}
           </div>
         </div>
       )}
@@ -173,26 +188,38 @@ export default function DagboekPage() {
       <div className="w-full p-4 flex flex-col">
         <Tabs value={activeDay} onValueChange={setActiveDay} className="w-full">
           <TabsList className="w-full h-12 p-1 mb-6 flex bg-secondary">
-            {DAYS.map(day => (
-              <TabsTrigger 
-                key={day.id} 
-                value={day.id}
-                className="flex-1 h-full rounded-md font-bold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all"
-              >
-                {day.label}
-              </TabsTrigger>
-            ))}
+            {DAYS.map(day => {
+              const sheetDay = sheetDays.find(d => d.dayId === day.id);
+              const dbEntry = entries?.find(e => e.day === day.id);
+              return (
+                <TabsTrigger 
+                  key={day.id} 
+                  value={day.id}
+                  className="flex-1 h-full rounded-md font-bold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all relative"
+                >
+                  {day.label}
+                  {/* Dot indicator: green = app-data saved, amber = only sheet data */}
+                  {dbEntry && (
+                    <span className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-primary" />
+                  )}
+                  {!dbEntry && sheetDay && (
+                    <span className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-amber-400" />
+                  )}
+                </TabsTrigger>
+              );
+            })}
           </TabsList>
 
           {DAYS.map(day => {
             const entry = entries?.find(e => e.day === day.id);
+            const sheetDay = sheetDays.find(d => d.dayId === day.id);
             return (
               <TabsContent key={day.id} value={day.id} className="mt-0">
-                <NutritionDayForm 
-                  day={day} 
-                  entry={entry} 
-                  weekTarget={weekTarget}
-                  onSave={(data) => handleSave(day.id, data)} 
+                <DagForm
+                  day={day}
+                  entry={entry}
+                  sheetDay={sheetDay ?? null}
+                  onSave={(data) => handleSave(day.id, data)}
                   isSaving={createEntry.isPending || updateEntry.isPending}
                 />
               </TabsContent>
@@ -204,187 +231,197 @@ export default function DagboekPage() {
   );
 }
 
-function NutritionDayForm({ day, entry, weekTarget, onSave, isSaving }: { 
-  day: any, 
-  entry?: any, 
-  weekTarget?: WeekTarget | null,
-  onSave: (data: any) => void, 
-  isSaving: boolean 
+function parseEntry(entry: any) {
+  let metrics: Record<string, string> = {};
+  let notes = entry?.notes || "";
+  try {
+    if (notes.startsWith("{")) {
+      const parsed = JSON.parse(notes);
+      metrics = parsed.metrics || {};
+      notes = parsed.text || "";
+    }
+  } catch { /* ignore */ }
+  return { metrics, notes };
+}
+
+function DagForm({ day, entry, sheetDay, onSave, isSaving }: {
+  day: { id: string; label: string; nl: string };
+  entry?: any;
+  sheetDay: any | null;
+  onSave: (data: any) => void;
+  isSaving: boolean;
 }) {
-  const [formData, setFormData] = useState(() => buildFormData(entry, weekTarget));
+  const buildForm = () => {
+    const { metrics, notes } = parseEntry(entry);
+    return {
+      kcal:           entry?.kcal?.toString()            || "",
+      lichaamsgewicht: metrics.lichaamsgewicht            || "",
+      buikomvang:     metrics.buikomvang                  || "",
+      heupomvang:     metrics.heupomvang                  || "",
+      krachtniveau:   metrics.krachtniveau                || "",
+      energieNiveau:  metrics.energieNiveau               || "",
+      slaapUren:      metrics.slaapUren                   || "",
+      stressNiveau:   metrics.stressNiveau                || "",
+      stappen:        metrics.stappen                     || "",
+      notes,
+    };
+  };
+
+  const [formData, setFormData] = useState(buildForm);
 
   useEffect(() => {
-    setFormData(buildFormData(entry, weekTarget));
-  }, [entry, weekTarget]);
+    setFormData(buildForm());
+  }, [entry, sheetDay]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
-  const handleSaveWrapper = () => {
-    const payload = { ...formData };
-    const metrics = {
-      slaapUren: payload.slaapUren,
-      stressNiveau: payload.stressNiveau,
-      energieNiveau: payload.energieNiveau,
-      lichaamsgewicht: payload.lichaamsgewicht
-    };
-    payload.notes = JSON.stringify({ metrics, text: payload.notes });
-    onSave(payload);
-  };
+  const hasDbEntry = !!entry;
 
-  // Determine if each field has real entered data or is just a placeholder suggestion
-  const hasEntry = !!entry;
+  // Helper: show sheet value as placeholder hint
+  const ph = (val: number | null | undefined, suffix = "") =>
+    val !== null && val !== undefined ? `${val}${suffix} (sheet)` : "";
 
   return (
-    <div className="bg-card border border-border rounded-xl p-5 shadow-sm space-y-6">
+    <div className="bg-card border border-border rounded-xl p-5 shadow-sm space-y-5">
 
-      {/* Indication whether data is filled or placeholder */}
-      {!hasEntry && weekTarget?.kcal && (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground bg-secondary/30 border border-border/50 rounded-lg px-3 py-2">
-          <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
-          Doelen uit sheet als startpunt — vul jouw werkelijke waarden in
-        </div>
-      )}
-      {hasEntry && (
+      {/* Status banner */}
+      {hasDbEntry ? (
         <div className="flex items-center gap-2 text-xs text-muted-foreground bg-primary/10 border border-primary/20 rounded-lg px-3 py-2">
-          <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-          Eerder ingevuld — bewerken of opnieuw opslaan
+          <span className="h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
+          <span>Eerder ingevuld via de app — bewerk en sla opnieuw op</span>
+        </div>
+      ) : sheetDay ? (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+          <Info className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+          <span>Spreadsheet-data zichtbaar als placeholder — vul in om te bevestigen</span>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground bg-secondary/40 border border-border/50 rounded-lg px-3 py-2">
+          <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground shrink-0" />
+          <span>Nog geen data voor {day.nl}</span>
         </div>
       )}
 
-      <div className="space-y-2">
-        <Label className="text-lg font-bold">Calorieën (kcal)</Label>
-        <Input 
-          type="number" inputMode="numeric"
-          name="kcal" value={formData.kcal} onChange={handleChange}
-          className="h-14 text-xl font-bold px-4" 
-          placeholder={weekTarget?.kcal ? `Doel: ${weekTarget.kcal} kcal` : "Bijv. 2500"}
-        />
-      </div>
-
-      <div className="grid grid-cols-3 gap-4">
-        <div className="space-y-2">
-          <Label className="text-sm font-semibold text-primary">Eiwit (g)</Label>
-          <Input 
-            type="number" inputMode="numeric"
-            name="eiwittenG" value={formData.eiwittenG} onChange={handleChange}
-            className="h-12 text-center font-bold" 
-            placeholder={weekTarget?.eiwittenG ? `${weekTarget.eiwittenG}g` : "0"}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label className="text-sm font-semibold text-orange-500">Koolh (g)</Label>
-          <Input 
-            type="number" inputMode="numeric"
-            name="koolhydratenG" value={formData.koolhydratenG} onChange={handleChange}
-            className="h-12 text-center font-bold" 
-            placeholder={weekTarget?.koolhydratenG ? `${weekTarget.koolhydratenG}g` : "0"}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label className="text-sm font-semibold text-amber-500">Vet (g)</Label>
-          <Input 
-            type="number" inputMode="numeric"
-            name="vetenG" value={formData.vetenG} onChange={handleChange}
-            className="h-12 text-center font-bold" 
-            placeholder={weekTarget?.vetenG ? `${weekTarget.vetenG}g` : "0"}
-          />
+      {/* Sectie: Lichaamsmaten */}
+      <div>
+        <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Lichaamsmaten</p>
+        <div className="grid grid-cols-3 gap-3">
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold">Gewicht (kg)</Label>
+            <Input
+              type="number" inputMode="decimal" name="lichaamsgewicht"
+              value={formData.lichaamsgewicht} onChange={handleChange}
+              className="h-12 text-center font-bold"
+              placeholder={ph(sheetDay?.gewicht, " kg") || "0.0"}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold">Buikomvang (cm)</Label>
+            <Input
+              type="number" inputMode="decimal" name="buikomvang"
+              value={formData.buikomvang} onChange={handleChange}
+              className="h-12 text-center font-bold"
+              placeholder={ph(sheetDay?.buikomvang, " cm") || "0"}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold">Heupomvang (cm)</Label>
+            <Input
+              type="number" inputMode="decimal" name="heupomvang"
+              value={formData.heupomvang} onChange={handleChange}
+              className="h-12 text-center font-bold"
+              placeholder={ph(sheetDay?.heupomvang, " cm") || "0"}
+            />
+          </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label className="text-sm font-semibold">Water (ml)</Label>
-          <Input 
-            type="number" inputMode="numeric"
-            name="waterMl" value={formData.waterMl} onChange={handleChange}
-            className="h-12 px-4" 
-            placeholder={weekTarget?.waterMl ? `Doel: ${weekTarget.waterMl} ml` : "Bijv. 3000"}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label className="text-sm font-semibold">Lichaamsgewicht (kg)</Label>
-          <Input 
-            type="number" inputMode="decimal"
-            name="lichaamsgewicht" value={formData.lichaamsgewicht} onChange={handleChange}
-            className="h-12 px-4" 
-            placeholder={weekTarget?.lichaamsgewicht ? `Doel: ${weekTarget.lichaamsgewicht} kg` : "Bijv. 80.5"}
+      {/* Sectie: Voeding */}
+      <div>
+        <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Voeding</p>
+        <div className="space-y-1.5">
+          <Label className="text-xs font-semibold">Calorieën (kcal)</Label>
+          <Input
+            type="number" inputMode="numeric" name="kcal"
+            value={formData.kcal} onChange={handleChange}
+            className="h-14 text-xl font-bold px-4"
+            placeholder={ph(sheetDay?.kcal, " kcal") || "Bijv. 2200"}
           />
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
-        <div className="space-y-2">
-          <Label className="text-sm font-semibold">Slaap (uren)</Label>
-          <Input 
-            type="number" inputMode="decimal"
-            name="slaapUren" value={formData.slaapUren} onChange={handleChange}
-            className="h-12 text-center" 
-            placeholder="Bijv. 8"
-          />
+      {/* Sectie: Welzijn */}
+      <div>
+        <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Welzijn & Prestatie</p>
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold">Energieniveau (0-10)</Label>
+            <Input
+              type="number" inputMode="numeric" name="energieNiveau" min="0" max="10"
+              value={formData.energieNiveau} onChange={handleChange}
+              className="h-12 text-center font-bold text-lg"
+              placeholder={ph(sheetDay?.energieniveau) || "0-10"}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold">Krachtniveau (0-10)</Label>
+            <Input
+              type="number" inputMode="numeric" name="krachtniveau" min="0" max="10"
+              value={formData.krachtniveau} onChange={handleChange}
+              className="h-12 text-center font-bold text-lg"
+              placeholder={ph(sheetDay?.krachtniveau) || "0-10"}
+            />
+          </div>
         </div>
-        <div className="space-y-2">
-          <Label className="text-sm font-semibold">Stress (1-10)</Label>
-          <Input 
-            type="number" inputMode="numeric"
-            name="stressNiveau" value={formData.stressNiveau} onChange={handleChange}
-            className="h-12 text-center" 
-            placeholder="1-10"
-          />
-        </div>
-        <div className="space-y-2">
-          <Label className="text-sm font-semibold">Energie (1-10)</Label>
-          <Input 
-            type="number" inputMode="numeric"
-            name="energieNiveau" value={formData.energieNiveau} onChange={handleChange}
-            className="h-12 text-center" 
-            placeholder="1-10"
-          />
+        <div className="grid grid-cols-3 gap-3">
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold">Slaap (uren)</Label>
+            <Input
+              type="number" inputMode="decimal" name="slaapUren"
+              value={formData.slaapUren} onChange={handleChange}
+              className="h-12 text-center font-bold"
+              placeholder={ph(sheetDay?.slaap, "u") || "8"}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold">Stress (0-10)</Label>
+            <Input
+              type="number" inputMode="numeric" name="stressNiveau" min="0" max="10"
+              value={formData.stressNiveau} onChange={handleChange}
+              className="h-12 text-center font-bold"
+              placeholder={ph(sheetDay?.stress) || "0-10"}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold">Stappen</Label>
+            <Input
+              type="number" inputMode="numeric" name="stappen"
+              value={formData.stappen} onChange={handleChange}
+              className="h-12 text-center font-bold"
+              placeholder={ph(sheetDay?.stappen) || "0"}
+            />
+          </div>
         </div>
       </div>
 
-      <div className="space-y-2">
-        <Label className="text-sm font-semibold">Notities</Label>
-        <Textarea 
+      {/* Notities */}
+      <div className="space-y-1.5">
+        <Label className="text-xs font-semibold">Notities</Label>
+        <Textarea
           name="notes" value={formData.notes} onChange={handleChange}
-          className="resize-none" placeholder="Bijv. voelde me moe, veel honger..."
+          className="resize-none" placeholder="Bijv. voelde me moe, spierpijn..."
         />
       </div>
 
-      <Button 
-        className="w-full h-12 font-bold rounded-lg" 
-        onClick={handleSaveWrapper}
+      <Button
+        className="w-full h-12 font-bold rounded-lg"
+        onClick={() => onSave(formData)}
         disabled={isSaving}
       >
         <Save className="w-5 h-5 mr-2" /> Opslaan
       </Button>
     </div>
   );
-}
-
-function buildFormData(entry: any, weekTarget: WeekTarget | null | undefined) {
-  let parsedNotes: any = {};
-  let pureNotes = entry?.notes || "";
-  try {
-    if (pureNotes.startsWith("{")) {
-      const parsed = JSON.parse(pureNotes);
-      parsedNotes = parsed.metrics || {};
-      pureNotes = parsed.text || "";
-    }
-  } catch(e) {}
-
-  // If we have actual entry data, show that; otherwise show empty fields with targets as placeholders
-  return {
-    kcal: entry?.kcal?.toString() || "",
-    eiwittenG: entry?.eiwittenG?.toString() || "",
-    koolhydratenG: entry?.koolhydratenG?.toString() || "",
-    vetenG: entry?.vetenG?.toString() || "",
-    waterMl: entry?.waterMl?.toString() || "",
-    slaapUren: parsedNotes.slaapUren || "",
-    stressNiveau: parsedNotes.stressNiveau || "",
-    energieNiveau: parsedNotes.energieNiveau || "",
-    lichaamsgewicht: parsedNotes.lichaamsgewicht || "",
-    notes: pureNotes
-  };
 }

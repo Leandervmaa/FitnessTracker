@@ -59,14 +59,25 @@ export interface ParsedNutritionTarget {
   waterL: number | null;
 }
 
-export interface ParsedWeekNutrition {
-  weekNumber: number;
+/** One day entry from the Progressie sheet */
+export interface ParsedProgressieDay {
+  dagNl: string;          // "Maandag", "Dinsdag" etc.
+  dayId: string;          // "mon", "tue" etc.
+  gewicht: number | null;
   kcal: number | null;
-  eiwitten: number | null;
-  koolhydraten: number | null;
-  vetten: number | null;
-  waterL: number | null;
-  lichaamsgewicht: number | null;
+  buikomvang: number | null;
+  heupomvang: number | null;
+  krachtniveau: number | null;
+  energieniveau: number | null;
+  slaap: number | null;
+  stress: number | null;
+  stappen: number | null;
+}
+
+/** All 7 days for one week from the Progressie sheet */
+export interface ParsedProgressieWeek {
+  weekNumber: number;
+  days: ParsedProgressieDay[];
 }
 
 export interface ParsedFeedbackAnswer {
@@ -80,7 +91,7 @@ export interface ParsedExcelData {
   feedbackQuestions: ParsedFeedbackQuestion[];
   feedbackAnswers: ParsedFeedbackAnswer[];
   nutritionTarget: ParsedNutritionTarget | null;
-  weekNutrition: ParsedWeekNutrition[];
+  progressie: ParsedProgressieWeek[];
   sheetNames: string[];
   parsedAt: Date;
 }
@@ -557,11 +568,25 @@ function parseNutritionTarget(wb: XLSX.WorkBook): ParsedNutritionTarget | null {
   return result.kcal !== null ? result : null;
 }
 
+// Day name → dayId mapping
+const DAG_TO_ID: Record<string, string> = {
+  maandag: "mon",
+  dinsdag: "tue",
+  woensdag: "wed",
+  donderdag: "thu",
+  vrijdag: "fri",
+  zaterdag: "sat",
+  zondag: "sun",
+};
+
 /**
- * Parse per-week nutrition/progression data from the "Progressie" sheet.
- * Expected layout: rows with week numbers and measured values like weight, kcal etc.
+ * Parse per-day progression data from the "Progressie sheet".
+ * Structure per week block:
+ *   Row 0: "Week N" | "Gewicht" | "Kcal inname" | "Buikomvang" | "Heupomvang" | "Krachtniveau" | "Energieniveau" | "Slaap" | "Stress" | "Stappen"
+ *   Row 1-7: "Maandag"…"Zondag" | values...
+ *   Row 8: "Gemiddeld" | ... (skip)
  */
-function parseWeekNutrition(wb: XLSX.WorkBook): ParsedWeekNutrition[] {
+function parseProgressie(wb: XLSX.WorkBook): ParsedProgressieWeek[] {
   const sheetName = wb.SheetNames.find((n) => /progressie/i.test(n));
   if (!sheetName) return [];
 
@@ -572,58 +597,77 @@ function parseWeekNutrition(wb: XLSX.WorkBook): ParsedWeekNutrition[] {
     raw: false,
   });
 
-  const results: ParsedWeekNutrition[] = [];
+  const results: ParsedProgressieWeek[] = [];
+  let currentWeek: ParsedProgressieWeek | null = null;
 
-  // Find header row to detect column indices
-  let headerRowIdx = -1;
-  let weekCol = -1;
-  let kcalCol = -1;
-  let eiwitCol = -1;
-  let koolhCol = -1;
-  let vetCol = -1;
-  let waterCol = -1;
-  let gewichtCol = -1;
+  // Column indices — fixed by sheet structure (col 0 = dag, 1=gewicht, 2=kcal, 3=buik, 4=heup, 5=kracht, 6=energie, 7=slaap, 8=stress, 9=stappen)
+  // We detect them dynamically from the header row to be safe
+  let colGewicht = 1;
+  let colKcal = 2;
+  let colBuik = 3;
+  let colHeup = 4;
+  let colKracht = 5;
+  let colEnergie = 6;
+  let colSlaap = 7;
+  let colStress = 8;
+  let colStappen = 9;
 
-  for (let i = 0; i < Math.min(10, rows.length); i++) {
-    const row = rows[i].map((c) => trimCell(c).toLowerCase());
-    const hasWeekCol = row.findIndex((c) => c === "week" || c.startsWith("week"));
-    if (hasWeekCol >= 0) {
-      headerRowIdx = i;
-      weekCol = hasWeekCol;
-      for (let j = 0; j < row.length; j++) {
-        const c = row[j];
-        if (c.includes("kcal") || c.includes("calorie") || c.includes("energie")) kcalCol = j;
-        else if ((c.includes("eiwit") || c.includes("protein")) && eiwitCol === -1) eiwitCol = j;
-        else if (c.includes("koolhydr") && koolhCol === -1) koolhCol = j;
-        else if ((c.includes("vet") || c.includes("fat")) && vetCol === -1) vetCol = j;
-        else if (c.includes("water") && waterCol === -1) waterCol = j;
-        else if ((c.includes("gewicht") || c.includes("weight") || c.includes("kg")) && gewichtCol === -1) gewichtCol = j;
+  for (let ri = 0; ri < rows.length; ri++) {
+    const row = rows[ri];
+    const col0 = trimCell(row[0]);
+    if (!col0) continue;
+
+    const col0Lower = col0.toLowerCase();
+
+    // Week header: "Week 1", "Week 2" etc.
+    const weekMatch = col0.match(/^week\s+(\d+)$/i);
+    if (weekMatch) {
+      // Save previous week
+      if (currentWeek && currentWeek.days.length > 0) results.push(currentWeek);
+
+      const weekNumber = parseInt(weekMatch[1], 10);
+      currentWeek = { weekNumber, days: [] };
+
+      // Detect column positions from this header row
+      const headerRow = row.map((c) => trimCell(c).toLowerCase());
+      for (let ci = 1; ci < headerRow.length; ci++) {
+        const h = headerRow[ci];
+        if (h === "gewicht") colGewicht = ci;
+        else if (h.includes("kcal")) colKcal = ci;
+        else if (h.includes("buikomvang")) colBuik = ci;
+        else if (h.includes("heupomvang")) colHeup = ci;
+        else if (h.includes("krachtniveau")) colKracht = ci;
+        else if (h.includes("energieniveau")) colEnergie = ci;
+        else if (h === "slaap") colSlaap = ci;
+        else if (h === "stress") colStress = ci;
+        else if (h.includes("stappen")) colStappen = ci;
       }
-      break;
+      continue;
     }
-  }
 
-  if (headerRowIdx === -1 || weekCol === -1) return [];
+    if (!currentWeek) continue;
 
-  for (let i = headerRowIdx + 1; i < rows.length; i++) {
-    const row = rows[i];
-    const weekCell = trimCell(row[weekCol]).toLowerCase();
-    // Match "Week 1", "1", "w1" etc.
-    const weekMatch = weekCell.match(/(\d+)/);
-    if (!weekMatch) continue;
-    const weekNumber = parseInt(weekMatch[1], 10);
-    if (isNaN(weekNumber) || weekNumber < 1) continue;
+    // Day rows: "Maandag", "Dinsdag" etc.
+    const dayId = DAG_TO_ID[col0Lower];
+    if (!dayId) continue; // skip "Gemiddeld", "Opmerkingen" etc.
 
-    results.push({
-      weekNumber,
-      kcal: kcalCol >= 0 ? toNum(row[kcalCol]) : null,
-      eiwitten: eiwitCol >= 0 ? toNum(row[eiwitCol]) : null,
-      koolhydraten: koolhCol >= 0 ? toNum(row[koolhCol]) : null,
-      vetten: vetCol >= 0 ? toNum(row[vetCol]) : null,
-      waterL: waterCol >= 0 ? toNum(row[waterCol]) : null,
-      lichaamsgewicht: gewichtCol >= 0 ? toNum(row[gewichtCol]) : null,
+    currentWeek.days.push({
+      dagNl: col0,
+      dayId,
+      gewicht:      toNum(row[colGewicht]),
+      kcal:         toNum(row[colKcal]),
+      buikomvang:   toNum(row[colBuik]),
+      heupomvang:   toNum(row[colHeup]),
+      krachtniveau: toNum(row[colKracht]),
+      energieniveau:toNum(row[colEnergie]),
+      slaap:        toNum(row[colSlaap]),
+      stress:       toNum(row[colStress]),
+      stappen:      toNum(row[colStappen]),
     });
   }
+
+  // Push last week
+  if (currentWeek && currentWeek.days.length > 0) results.push(currentWeek);
 
   return results;
 }
@@ -671,7 +715,7 @@ export function parseExcelFile(filePath: string = EXCEL_PATH): ParsedExcelData |
     const feedbackQuestions = parseFeedbackQuestions(wb);
     const feedbackAnswers = parseFeedbackAnswers(wb, feedbackQuestions);
     const nutritionTarget = parseNutritionTarget(wb);
-    const weekNutrition = parseWeekNutrition(wb);
+    const progressie = parseProgressie(wb);
 
     logger.info(
       {
@@ -679,7 +723,7 @@ export function parseExcelFile(filePath: string = EXCEL_PATH): ParsedExcelData |
         feedbackQ: feedbackQuestions.length,
         feedbackA: feedbackAnswers.length,
         hasNutrition: nutritionTarget !== null,
-        weekNutritionRows: weekNutrition.length,
+        progressieWeeks: progressie.length,
       },
       "Excel parse complete"
     );
@@ -689,7 +733,7 @@ export function parseExcelFile(filePath: string = EXCEL_PATH): ParsedExcelData |
       feedbackQuestions,
       feedbackAnswers,
       nutritionTarget,
-      weekNutrition,
+      progressie,
       sheetNames: wb.SheetNames,
       parsedAt: new Date(),
     };
