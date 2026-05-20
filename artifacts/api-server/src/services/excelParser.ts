@@ -59,6 +59,16 @@ export interface ParsedNutritionTarget {
   waterL: number | null;
 }
 
+export interface ParsedWeekNutrition {
+  weekNumber: number;
+  kcal: number | null;
+  eiwitten: number | null;
+  koolhydraten: number | null;
+  vetten: number | null;
+  waterL: number | null;
+  lichaamsgewicht: number | null;
+}
+
 export interface ParsedFeedbackAnswer {
   weekNumber: number;
   questionId: number;
@@ -70,6 +80,7 @@ export interface ParsedExcelData {
   feedbackQuestions: ParsedFeedbackQuestion[];
   feedbackAnswers: ParsedFeedbackAnswer[];
   nutritionTarget: ParsedNutritionTarget | null;
+  weekNutrition: ParsedWeekNutrition[];
   sheetNames: string[];
   parsedAt: Date;
 }
@@ -101,6 +112,46 @@ function cellVideoUrl(sheet: XLSX.WorkSheet, cellAddr: string): string | null {
 
 function addr(colIdx: number, rowIdx: number): string {
   return XLSX.utils.encode_cell({ c: colIdx, r: rowIdx });
+}
+
+/**
+ * Maps an exercise name to a local image URL (served from /images/).
+ * Returns null when no match found (frontend falls back to getExerciseImage).
+ */
+export function getExerciseImageUrl(name: string): string | null {
+  const n = name.toLowerCase();
+
+  // Specific detailed mappings (high-resolution uploaded images)
+  if (n.includes("biceps cable curl") || (n.includes("biceps") && n.includes("cable") && n.includes("curl"))) return "/images/biceps_cable_curl.jpg";
+  if (n.includes("anterior delt") || (n.includes("incline") && n.includes("db") && n.includes("press"))) return "/images/anterior_delt_incline_db_press.jpg";
+  if (n.includes("chest supported pulldown") || n.includes("chest-supported pulldown") || (n.includes("chest") && n.includes("pulldown"))) return "/images/chest_supported_pulldown.jpg";
+  if (n.includes("costal pec fly") || (n.includes("pec") && n.includes("fly")) || (n.includes("cable") && n.includes("fly"))) return "/images/costal_pec_fly.jpg";
+  if (n.includes("cable row") || (n.includes("cable") && n.includes("row"))) return "/images/cable_row.jpg";
+
+  // Benen & Billen
+  if (n.includes("front squat")) return "/images/frontsquat_muscles.png";
+  if (n.includes("squat")) return "/images/squat_muscles.png";
+  if (n.includes("roemeense") || n.includes("rdl") || n.includes("romanian")) return "/images/rdl_muscles.png";
+  if (n.includes("sumo deadlift") || n.includes("deadlift")) return "/images/rdl_muscles.png";
+  if (n.includes("leg press")) return "/images/legpress_muscles.png";
+  if (n.includes("leg curl")) return "/images/legcurl_muscles.png";
+  if (n.includes("hip thrust")) return "/images/hipthrust_muscles.png";
+
+  // Borst & Schouders & Triceps
+  if (n.includes("incline") && n.includes("press")) return "/images/inclinepress_muscles.png";
+  if (n.includes("bench press") || n.includes("druk")) return "/images/benchpress_muscles.png";
+  if (n.includes("push press")) return "/images/pushpress_muscles.png";
+  if (n.includes("schouderpers") || n.includes("shoulder press") || n.includes("overhead press") || n.includes("ohp")) return "/images/schouderpers_muscles.png";
+  if (n.includes("lateral raise") || n.includes("zijwaartse hef")) return "/images/lateralraise_muscles.png";
+  if (n.includes("dip")) return "/images/tricepdip_muscles.png";
+
+  // Rug & Biceps
+  if (n.includes("pull-up") || n.includes("pullup") || n.includes("chin-up") || (n.includes("pulldown") && !n.includes("chest"))) return "/images/pullup_muscles.png";
+  if (n.includes("barbell row") || n.includes("bent-over") || (n.includes("row") && !n.includes("cable"))) return "/images/barbellrow_muscles.png";
+  if (n.includes("face pull")) return "/images/facepull_muscles.png";
+  if (n.includes("bicep curl") || n.includes("biceps curl") || (n.includes("curl") && !n.includes("leg"))) return "/images/bicepcurl_muscles.png";
+
+  return null;
 }
 
 // ─── dynamic column map ──────────────────────────────────────────────────────
@@ -290,10 +341,11 @@ function parseTrainingSheet(
       // Pattern B (Week 2+-style): col B is "Oefening:" = just a column header, exercises on next rows
       if (colB && /^[A-Z]\s*:/i.test(colB)) {
         const videoUrl = cellVideoUrl(sheet, addr(1, ri));
+        const exerciseName = stripLetterPrefix(colB);
         exerciseOrder++;
         currentWorkout.exercises.push({
           id: `w${currentWeek}-${letter}-${exerciseOrder}`,
-          name: stripLetterPrefix(colB),
+          name: exerciseName,
           notes: trimCell(row[2]) || null,
           sets: toNum(row[colMap.werkSets]),
           reps: trimCell(row[colMap.reps]) || null,
@@ -301,7 +353,7 @@ function parseTrainingSheet(
           sheetWeights: getSetWeightsList(row, colMap),
           sheetReps: getSetRepsList(row, colMap),
           videoUrl,
-          imageUrl: null,
+          imageUrl: getExerciseImageUrl(exerciseName),
           order: exerciseOrder,
         });
       }
@@ -318,10 +370,11 @@ function parseTrainingSheet(
       currentWorkout
     ) {
       const videoUrl = cellVideoUrl(sheet, addr(1, ri));
+      const exerciseName2 = stripLetterPrefix(colB);
       exerciseOrder++;
       currentWorkout.exercises.push({
         id: `w${currentWeek}-${currentWorkout.id.split("-").pop()}-${exerciseOrder}`,
-        name: stripLetterPrefix(colB),
+        name: exerciseName2,
         notes: trimCell(row[2]) || null,
         sets: toNum(row[colMap.werkSets]),
         reps: trimCell(row[colMap.reps]) || null,
@@ -329,7 +382,7 @@ function parseTrainingSheet(
         sheetWeights: getSetWeightsList(row, colMap),
         sheetReps: getSetRepsList(row, colMap),
         videoUrl,
-        imageUrl: null,
+        imageUrl: getExerciseImageUrl(exerciseName2),
         order: exerciseOrder,
       });
     }
@@ -504,6 +557,77 @@ function parseNutritionTarget(wb: XLSX.WorkBook): ParsedNutritionTarget | null {
   return result.kcal !== null ? result : null;
 }
 
+/**
+ * Parse per-week nutrition/progression data from the "Progressie" sheet.
+ * Expected layout: rows with week numbers and measured values like weight, kcal etc.
+ */
+function parseWeekNutrition(wb: XLSX.WorkBook): ParsedWeekNutrition[] {
+  const sheetName = wb.SheetNames.find((n) => /progressie/i.test(n));
+  if (!sheetName) return [];
+
+  const sheet = wb.Sheets[sheetName];
+  const rows: string[][] = XLSX.utils.sheet_to_json(sheet, {
+    header: 1,
+    defval: "",
+    raw: false,
+  });
+
+  const results: ParsedWeekNutrition[] = [];
+
+  // Find header row to detect column indices
+  let headerRowIdx = -1;
+  let weekCol = -1;
+  let kcalCol = -1;
+  let eiwitCol = -1;
+  let koolhCol = -1;
+  let vetCol = -1;
+  let waterCol = -1;
+  let gewichtCol = -1;
+
+  for (let i = 0; i < Math.min(10, rows.length); i++) {
+    const row = rows[i].map((c) => trimCell(c).toLowerCase());
+    const hasWeekCol = row.findIndex((c) => c === "week" || c.startsWith("week"));
+    if (hasWeekCol >= 0) {
+      headerRowIdx = i;
+      weekCol = hasWeekCol;
+      for (let j = 0; j < row.length; j++) {
+        const c = row[j];
+        if (c.includes("kcal") || c.includes("calorie") || c.includes("energie")) kcalCol = j;
+        else if ((c.includes("eiwit") || c.includes("protein")) && eiwitCol === -1) eiwitCol = j;
+        else if (c.includes("koolhydr") && koolhCol === -1) koolhCol = j;
+        else if ((c.includes("vet") || c.includes("fat")) && vetCol === -1) vetCol = j;
+        else if (c.includes("water") && waterCol === -1) waterCol = j;
+        else if ((c.includes("gewicht") || c.includes("weight") || c.includes("kg")) && gewichtCol === -1) gewichtCol = j;
+      }
+      break;
+    }
+  }
+
+  if (headerRowIdx === -1 || weekCol === -1) return [];
+
+  for (let i = headerRowIdx + 1; i < rows.length; i++) {
+    const row = rows[i];
+    const weekCell = trimCell(row[weekCol]).toLowerCase();
+    // Match "Week 1", "1", "w1" etc.
+    const weekMatch = weekCell.match(/(\d+)/);
+    if (!weekMatch) continue;
+    const weekNumber = parseInt(weekMatch[1], 10);
+    if (isNaN(weekNumber) || weekNumber < 1) continue;
+
+    results.push({
+      weekNumber,
+      kcal: kcalCol >= 0 ? toNum(row[kcalCol]) : null,
+      eiwitten: eiwitCol >= 0 ? toNum(row[eiwitCol]) : null,
+      koolhydraten: koolhCol >= 0 ? toNum(row[koolhCol]) : null,
+      vetten: vetCol >= 0 ? toNum(row[vetCol]) : null,
+      waterL: waterCol >= 0 ? toNum(row[waterCol]) : null,
+      lichaamsgewicht: gewichtCol >= 0 ? toNum(row[gewichtCol]) : null,
+    });
+  }
+
+  return results;
+}
+
 // ─── defaults ────────────────────────────────────────────────────────────────
 
 const DEFAULT_FEEDBACK_QUESTIONS: ParsedFeedbackQuestion[] = [
@@ -547,6 +671,7 @@ export function parseExcelFile(filePath: string = EXCEL_PATH): ParsedExcelData |
     const feedbackQuestions = parseFeedbackQuestions(wb);
     const feedbackAnswers = parseFeedbackAnswers(wb, feedbackQuestions);
     const nutritionTarget = parseNutritionTarget(wb);
+    const weekNutrition = parseWeekNutrition(wb);
 
     logger.info(
       {
@@ -554,6 +679,7 @@ export function parseExcelFile(filePath: string = EXCEL_PATH): ParsedExcelData |
         feedbackQ: feedbackQuestions.length,
         feedbackA: feedbackAnswers.length,
         hasNutrition: nutritionTarget !== null,
+        weekNutritionRows: weekNutrition.length,
       },
       "Excel parse complete"
     );
@@ -563,6 +689,7 @@ export function parseExcelFile(filePath: string = EXCEL_PATH): ParsedExcelData |
       feedbackQuestions,
       feedbackAnswers,
       nutritionTarget,
+      weekNutrition,
       sheetNames: wb.SheetNames,
       parsedAt: new Date(),
     };

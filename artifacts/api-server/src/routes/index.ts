@@ -7,6 +7,7 @@ import nutritionRouter from "./nutrition";
 import feedbackRouter, { feedbackQuestionsRouter } from "./feedback";
 import uploadRouter from "./upload";
 import dataStatusRouter from "./dataStatus";
+import exportRouter from "./export";
 
 const router: IRouter = Router();
 
@@ -19,5 +20,6 @@ router.use("/feedback-questions", feedbackQuestionsRouter);
 router.use("/feedback", feedbackRouter);
 router.use("/upload", uploadRouter);
 router.use("/data-status", dataStatusRouter);
+router.use("/export", exportRouter);
 
 export default router;

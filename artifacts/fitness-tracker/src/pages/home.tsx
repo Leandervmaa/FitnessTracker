@@ -2,7 +2,7 @@ import { Link } from "wouter";
 import { useEffect, useState } from "react";
 import { useWeek } from "@/components/week-context";
 import { useListWeeks } from "@workspace/api-client-react";
-import { Dumbbell, Book, MessageSquare, ChevronDown, Settings, AlertCircle, CheckCircle2, FileSpreadsheet } from "lucide-react";
+import { Dumbbell, Book, MessageSquare, ChevronDown, Settings, AlertCircle, CheckCircle2, FileSpreadsheet, Download } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 
@@ -29,6 +29,29 @@ export default function Home() {
   const { selectedWeek, setSelectedWeek } = useWeek();
   const { data: weeks } = useListWeeks();
   const dataStatus = useDataStatus();
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownload = async () => {
+    if (downloading) return;
+    setDownloading(true);
+    try {
+      const res = await fetch("/api/export/excel");
+      if (!res.ok) return;
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const disposition = res.headers.get("Content-Disposition") || "";
+      const match = disposition.match(/filename="?([^"]+)"?/);
+      a.download = match?.[1] || "FitnessTracker_Export.xlsx";
+      a.href = url;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   return (
     <div className="min-h-[100dvh] w-full bg-background flex flex-col items-center p-6 pb-24 max-w-md mx-auto relative">
@@ -109,6 +132,16 @@ export default function Home() {
 
       {weeks && selectedWeek && (
         <div className="fixed bottom-6 right-6 flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={handleDownload}
+            disabled={downloading}
+            className="rounded-full shadow-md bg-card border-border h-12 w-12 flex-shrink-0"
+            title="Download bijgewerkt Excel"
+          >
+            <Download className={`h-5 w-5 text-green-600 dark:text-green-400 ${downloading ? "animate-pulse" : ""}`} />
+          </Button>
           <Link href="/excel-viewer">
             <Button variant="outline" size="icon" className="rounded-full shadow-md bg-card border-border h-12 w-12 flex-shrink-0" title="Bekijk Excel schema">
               <FileSpreadsheet className="h-5 w-5 text-green-600 dark:text-green-400" />

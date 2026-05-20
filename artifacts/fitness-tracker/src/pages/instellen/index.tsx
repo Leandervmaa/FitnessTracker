@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { useLocation } from "wouter";
-import { ChevronLeft, Upload, CheckCircle2, XCircle, FileSpreadsheet, Trash2, RefreshCw } from "lucide-react";
+import { ChevronLeft, Upload, CheckCircle2, XCircle, FileSpreadsheet, Trash2, RefreshCw, Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 
@@ -44,6 +44,7 @@ export default function Instellen() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const { status, loading, refresh } = useDataStatus();
 
   // Load on mount
@@ -101,6 +102,47 @@ export default function Instellen() {
       toast({ title: "Verbindingsfout", description: "Kon de server niet bereiken.", variant: "destructive" });
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const handleDownload = async () => {
+    setDownloading(true);
+    try {
+      const res = await fetch("/api/export/excel");
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast({
+          title: "Download mislukt",
+          description: data.error || "Probeer het opnieuw.",
+          variant: "destructive",
+        });
+        return;
+      }
+      // Trigger browser download
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      // Read filename from Content-Disposition header
+      const disposition = res.headers.get("Content-Disposition") || "";
+      const match = disposition.match(/filename="?([^"]+)"?/);
+      a.download = match?.[1] || `FitnessTracker_Export.xlsx`;
+      a.href = url;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast({
+        title: "Download gestart!",
+        description: "Het bijgewerkte Excel-bestand wordt gedownload.",
+      });
+    } catch {
+      toast({
+        title: "Verbindingsfout",
+        description: "Kon de server niet bereiken. Probeer het opnieuw.",
+        variant: "destructive",
+      });
+    } finally {
+      setDownloading(false);
     }
   };
 
@@ -208,6 +250,43 @@ export default function Instellen() {
               {deleting ? "Verwijderen..." : "Bestand verwijderen (terug naar demo)"}
             </Button>
           )}
+        </div>
+
+        {/* Download sectie */}
+        <div className="bg-card border border-border rounded-xl p-5">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="h-10 w-10 bg-green-500/10 rounded-lg flex items-center justify-center">
+              <Download className="h-5 w-5 text-green-600 dark:text-green-400" />
+            </div>
+            <div>
+              <h2 className="font-bold text-foreground">Download bijgewerkt Excel</h2>
+              <p className="text-xs text-muted-foreground">Exporteer alle ingevulde data</p>
+            </div>
+          </div>
+
+          <p className="text-sm text-muted-foreground mb-4">
+            Download het Excel-bestand met daarin alle data die je via de app hebt ingevoerd:
+            trainingsgewichten, voeding, dagboekmetingen en feedback-antwoorden.
+            {!status?.excelFilePresent && " (Bevat alleen app-data, geen programma-data omdat er geen bestand is geüpload.)"}
+          </p>
+
+          <Button
+            className="w-full h-12 font-bold bg-green-600 hover:bg-green-700 text-white"
+            onClick={handleDownload}
+            disabled={downloading}
+          >
+            {downloading ? (
+              <>
+                <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                Bestand voorbereiden...
+              </>
+            ) : (
+              <>
+                <Download className="h-5 w-5 mr-2" />
+                Download Excel (.xlsx)
+              </>
+            )}
+          </Button>
         </div>
 
         {/* Instructies */}

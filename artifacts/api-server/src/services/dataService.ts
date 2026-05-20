@@ -3,7 +3,7 @@
  * Tries to load from uploaded Excel file first.
  * Falls back to hardcoded workoutProgram.ts when file is absent.
  */
-import { parseExcelFile, EXCEL_PATH, type ParsedExcelData, type ParsedWorkout, type ParsedExercise, type ParsedFeedbackQuestion, type ParsedFeedbackAnswer } from "./excelParser.js";
+import { parseExcelFile, EXCEL_PATH, type ParsedExcelData, type ParsedWorkout, type ParsedExercise, type ParsedFeedbackQuestion, type ParsedFeedbackAnswer, type ParsedWeekNutrition } from "./excelParser.js";
 import { getWeekProgram, getAllWeeks, getWorkoutById as getWorkoutByIdHardcoded, type WorkoutDefinition, type ExerciseDefinition } from "../data/workoutProgram.js";
 import { logger } from "../lib/logger.js";
 import fs from "fs";
@@ -143,6 +143,27 @@ export function getNutritionTarget(_weekNumber: number): { kcal: number | null; 
       koolhydraten: data.nutritionTarget.koolhydraten,
       vetten: data.nutritionTarget.vetten,
       water: data.nutritionTarget.waterL,
+    };
+  }
+  return null;
+}
+
+export function getWeekNutrition(weekNumber: number): ParsedWeekNutrition | null {
+  const data = refreshIfNeeded();
+  if (data?.weekNutrition && data.weekNutrition.length > 0) {
+    const found = data.weekNutrition.find((w) => w.weekNumber === weekNumber);
+    if (found) return found;
+  }
+  // Fallback: return global nutrition target as ParsedWeekNutrition
+  if (data?.nutritionTarget) {
+    return {
+      weekNumber,
+      kcal: data.nutritionTarget.kcal,
+      eiwitten: data.nutritionTarget.eiwitten,
+      koolhydraten: data.nutritionTarget.koolhydraten,
+      vetten: data.nutritionTarget.vetten,
+      waterL: data.nutritionTarget.waterL,
+      lichaamsgewicht: null,
     };
   }
   return null;

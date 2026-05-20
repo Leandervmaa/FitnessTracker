@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { nutritionEntriesTable } from "@workspace/db";
 import { CreateNutritionEntryBody, UpdateNutritionEntryBody, UpdateNutritionEntryParams, GetNutritionEntriesQueryParams } from "@workspace/api-zod";
-import { getNutritionTarget } from "../services/dataService.js";
+import { getNutritionTarget, getWeekNutrition } from "../services/dataService.js";
 import { eq, and } from "drizzle-orm";
 
 const router = Router();
@@ -13,16 +13,41 @@ router.get("/target", async (req, res) => {
     if (!target) {
       return res.status(404).json({ error: "Geen voedingsdoelen gevonden" });
     }
-    // Map to camelCase format expected by generated client types (waterL -> waterMl, etc.)
     return void res.json({
       kcal: target.kcal,
       eiwittenG: target.eiwitten,
       koolhydratenG: target.koolhydraten,
       vetenG: target.vetten,
-      waterMl: target.water ? target.water * 1000 : null, // Convert liters to ml!
+      waterMl: target.water ? target.water * 1000 : null,
     });
   } catch (err) {
     req.log.error({ err }, "Failed to get nutrition target");
+    return void res.status(500).json({ error: "Interne serverfout" });
+  }
+});
+
+/** Per-week nutrition targets (from Progressie sheet) */
+router.get("/target/:weekNumber", async (req, res) => {
+  try {
+    const weekNumber = parseInt(req.params.weekNumber, 10);
+    if (isNaN(weekNumber)) return void res.status(400).json({ error: "Ongeldig weeknummer" });
+
+    const weekData = getWeekNutrition(weekNumber);
+    if (!weekData) {
+      return void res.status(404).json({ error: "Geen week-doelen gevonden" });
+    }
+
+    return void res.json({
+      weekNumber: weekData.weekNumber,
+      kcal: weekData.kcal,
+      eiwittenG: weekData.eiwitten,
+      koolhydratenG: weekData.koolhydraten,
+      vetenG: weekData.vetten,
+      waterMl: weekData.waterL ? weekData.waterL * 1000 : null,
+      lichaamsgewicht: weekData.lichaamsgewicht,
+    });
+  } catch (err) {
+    req.log.error({ err }, "Failed to get week nutrition target");
     return void res.status(500).json({ error: "Interne serverfout" });
   }
 });

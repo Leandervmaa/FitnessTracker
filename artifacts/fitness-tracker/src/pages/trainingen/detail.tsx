@@ -120,44 +120,45 @@ export default function TrainingDetail() {
 
   const progress = ((currentStep) / exercises.length) * 100;
   
-  // Use generated images based on typical exercises
+  // Client-side exercise → image mapper (mirrors server-side getExerciseImageUrl in excelParser)
   const getExerciseImage = (name: string) => {
-    const lowerName = name.toLowerCase();
-    
-    // Specific detailed mappings (uploaded images)
-    if (lowerName.includes("biceps cable curl") || lowerName.includes("cable curl")) return "/images/biceps_cable_curl.jpg";
-    if (lowerName.includes("anterior delt") || lowerName.includes("incline db press")) return "/images/anterior_delt_incline_db_press.jpg";
-    if (lowerName.includes("chest supported pulldown") || lowerName.includes("chest-supported pulldown")) return "/images/chest_supported_pulldown.jpg";
-    if (lowerName.includes("costal pec fly") || lowerName.includes("pec fly") || lowerName.includes("cable fly")) return "/images/costal_pec_fly.jpg";
-    if (lowerName.includes("cable row") || lowerName.includes("seated row")) return "/images/cable_row.jpg";
+    const n = name.toLowerCase();
+
+    // Specific high-res uploaded images
+    if (n.includes("biceps cable curl") || (n.includes("biceps") && n.includes("cable") && n.includes("curl"))) return "/images/biceps_cable_curl.jpg";
+    if (n.includes("anterior delt") || (n.includes("incline") && n.includes("db") && n.includes("press"))) return "/images/anterior_delt_incline_db_press.jpg";
+    if (n.includes("chest supported pulldown") || n.includes("chest-supported pulldown") || (n.includes("chest") && n.includes("pulldown"))) return "/images/chest_supported_pulldown.jpg";
+    if (n.includes("costal pec fly") || (n.includes("pec") && n.includes("fly")) || (n.includes("cable") && n.includes("fly"))) return "/images/costal_pec_fly.jpg";
+    if (n.includes("cable row") || (n.includes("cable") && n.includes("row"))) return "/images/cable_row.jpg";
 
     // Benen & Billen
-    if (lowerName.includes("front squat")) return "/images/frontsquat_muscles.png";
-    if (lowerName.includes("squat")) return "/images/squat_muscles.png";
-    if (lowerName.includes("roemeense") || lowerName.includes("rdl")) return "/images/rdl_muscles.png";
-    if (lowerName.includes("sumo deadlift") || lowerName.includes("deadlift")) return "/images/rdl_muscles.png"; // Fallback to RDL for deadlift
-    if (lowerName.includes("leg press")) return "/images/legpress_muscles.png";
-    if (lowerName.includes("leg curl")) return "/images/legcurl_muscles.png";
-    if (lowerName.includes("hip thrust")) return "/images/hipthrust_muscles.png";
-    
+    if (n.includes("front squat")) return "/images/frontsquat_muscles.png";
+    if (n.includes("squat")) return "/images/squat_muscles.png";
+    if (n.includes("roemeense") || n.includes("rdl") || n.includes("romanian")) return "/images/rdl_muscles.png";
+    if (n.includes("sumo deadlift") || n.includes("deadlift")) return "/images/rdl_muscles.png";
+    if (n.includes("leg press")) return "/images/legpress_muscles.png";
+    if (n.includes("leg curl")) return "/images/legcurl_muscles.png";
+    if (n.includes("hip thrust")) return "/images/hipthrust_muscles.png";
+
     // Borst & Schouders & Triceps
-    if (lowerName.includes("incline") && lowerName.includes("press")) return "/images/inclinepress_muscles.png";
-    if (lowerName.includes("bench press") || lowerName.includes("druk")) return "/images/benchpress_muscles.png";
-    if (lowerName.includes("push press")) return "/images/pushpress_muscles.png";
-    if (lowerName.includes("schouderpers") || lowerName.includes("shoulder press")) return "/images/schouderpers_muscles.png";
-    if (lowerName.includes("lateral raise")) return "/images/lateralraise_muscles.png";
-    if (lowerName.includes("dip")) return "/images/tricepdip_muscles.png";
-    
+    if (n.includes("incline") && n.includes("press")) return "/images/inclinepress_muscles.png";
+    if (n.includes("bench press") || n.includes("druk")) return "/images/benchpress_muscles.png";
+    if (n.includes("push press")) return "/images/pushpress_muscles.png";
+    if (n.includes("schouderpers") || n.includes("shoulder press") || n.includes("overhead press") || n.includes("ohp")) return "/images/schouderpers_muscles.png";
+    if (n.includes("lateral raise") || n.includes("zijwaartse hef")) return "/images/lateralraise_muscles.png";
+    if (n.includes("dip")) return "/images/tricepdip_muscles.png";
+
     // Rug & Biceps
-    if (lowerName.includes("pull-up") || lowerName.includes("pulldown")) return "/images/pullup_muscles.png";
-    if (lowerName.includes("row")) return "/images/barbellrow_muscles.png";
-    if (lowerName.includes("bicep curl") || lowerName.includes("curl")) return "/images/bicepcurl_muscles.png";
-    if (lowerName.includes("face pull")) return "/images/facepull_muscles.png";
-    
-    // Default fallback
+    if (n.includes("pull-up") || n.includes("pullup") || n.includes("chin-up") || (n.includes("pulldown") && !n.includes("chest"))) return "/images/pullup_muscles.png";
+    if (n.includes("barbell row") || n.includes("bent-over") || (n.includes("row") && !n.includes("cable"))) return "/images/barbellrow_muscles.png";
+    if (n.includes("face pull")) return "/images/facepull_muscles.png";
+    if (n.includes("bicep curl") || n.includes("biceps curl") || (n.includes("curl") && !n.includes("leg"))) return "/images/bicepcurl_muscles.png";
+
+    // Generic fallback
     return "/images/generic-muscles.png";
   };
 
+  // API imageUrl (server-side mapped) has priority; client-side is safety fallback
   const imageUrl = exercise.imageUrl || getExerciseImage(exercise.name);
 
   return (

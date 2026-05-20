@@ -5,12 +5,11 @@ import {
   useGetNutritionEntries, 
   useCreateNutritionEntry, 
   useUpdateNutritionEntry,
-  useGetNutritionTarget,
   getGetNutritionEntriesQueryKey
 } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
-import { Link, useLocation } from "wouter";
-import { ChevronLeft, Utensils, Save } from "lucide-react";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
+import { ChevronLeft, BookOpen, Save, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,7 +27,41 @@ const DAYS = [
   { id: "sun", label: "Zo" }
 ];
 
-export default function NutritionList() {
+interface WeekTarget {
+  weekNumber: number;
+  kcal: number | null;
+  eiwittenG: number | null;
+  koolhydratenG: number | null;
+  vetenG: number | null;
+  waterMl: number | null;
+  lichaamsgewicht: number | null;
+}
+
+function useWeekTarget(weekNumber: number | undefined) {
+  return useQuery<WeekTarget | null>({
+    queryKey: ["nutrition-week-target", weekNumber],
+    queryFn: async () => {
+      if (!weekNumber) return null;
+      try {
+        const res = await fetch(`/api/nutrition/target/${weekNumber}`);
+        if (!res.ok) {
+          // Try global target as fallback
+          const fallback = await fetch(`/api/nutrition/target`);
+          if (!fallback.ok) return null;
+          const data = await fallback.json();
+          return { ...data, weekNumber, lichaamsgewicht: null };
+        }
+        return await res.json();
+      } catch {
+        return null;
+      }
+    },
+    enabled: !!weekNumber,
+    staleTime: 60_000,
+  });
+}
+
+export default function DagboekPage() {
   const { selectedWeek } = useWeek();
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
@@ -36,7 +69,7 @@ export default function NutritionList() {
   
   const [activeDay, setActiveDay] = useState(DAYS[0].id);
 
-  const { data: target } = useGetNutritionTarget();
+  const { data: weekTarget } = useWeekTarget(selectedWeek ?? undefined);
 
   const { data: entries } = useGetNutritionEntries(
     { weekNumber: selectedWeek || 0 },
@@ -86,43 +119,53 @@ export default function NutritionList() {
           <ChevronLeft className="h-6 w-6" />
         </Button>
         <div className="flex-1 flex items-center">
-          <Utensils className="w-5 h-5 text-primary mr-2" />
-          <h1 className="text-xl font-bold text-foreground">Voeding</h1>
+          <BookOpen className="w-5 h-5 text-primary mr-2" />
+          <h1 className="text-xl font-bold text-foreground">Dagboek</h1>
         </div>
         <WeekSelector />
       </header>
 
-      {target && (
+      {weekTarget && (
         <div className="w-full px-4 pt-4">
           <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
             <h3 className="text-xs font-bold text-muted-foreground mb-3 flex items-center gap-1.5 uppercase tracking-wider">
-              <span className="h-2 w-2 rounded-full bg-primary animate-pulse" />
-              Doelstellingen Voedingsplan
+              <TrendingUp className="h-3.5 w-3.5 text-primary" />
+              Week {selectedWeek} — Doelstellingen
             </h3>
             <div className="grid grid-cols-2 gap-3 mb-3">
               <div className="bg-secondary/40 border border-border/60 rounded-lg p-2.5 flex flex-col">
                 <span className="text-[10px] text-muted-foreground font-bold uppercase">Energie</span>
-                <span className="text-base font-black text-foreground mt-0.5">{target.kcal} kcal</span>
+                <span className="text-base font-black text-foreground mt-0.5">
+                  {weekTarget.kcal ? `${weekTarget.kcal} kcal` : "—"}
+                </span>
               </div>
               <div className="bg-secondary/40 border border-border/60 rounded-lg p-2.5 flex flex-col">
                 <span className="text-[10px] text-muted-foreground font-bold uppercase">Water</span>
-                <span className="text-base font-black text-foreground mt-0.5">{target.waterMl ? target.waterMl / 1000 : 0} L</span>
+                <span className="text-base font-black text-foreground mt-0.5">
+                  {weekTarget.waterMl ? `${weekTarget.waterMl / 1000} L` : "—"}
+                </span>
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-3 gap-2 mb-3">
               <div className="bg-secondary/20 border border-border/40 rounded-lg p-2 text-center">
                 <div className="text-[9px] text-primary font-bold uppercase">Eiwit</div>
-                <div className="text-xs font-extrabold mt-0.5">{target.eiwittenG}g</div>
+                <div className="text-xs font-extrabold mt-0.5">{weekTarget.eiwittenG ? `${weekTarget.eiwittenG}g` : "—"}</div>
               </div>
               <div className="bg-secondary/20 border border-border/40 rounded-lg p-2 text-center">
                 <div className="text-[9px] text-orange-500 font-bold uppercase">Koolhydraten</div>
-                <div className="text-xs font-extrabold mt-0.5">{target.koolhydratenG}g</div>
+                <div className="text-xs font-extrabold mt-0.5">{weekTarget.koolhydratenG ? `${weekTarget.koolhydratenG}g` : "—"}</div>
               </div>
               <div className="bg-secondary/20 border border-border/40 rounded-lg p-2 text-center">
                 <div className="text-[9px] text-amber-500 font-bold uppercase">Vetten</div>
-                <div className="text-xs font-extrabold mt-0.5">{target.vetenG}g</div>
+                <div className="text-xs font-extrabold mt-0.5">{weekTarget.vetenG ? `${weekTarget.vetenG}g` : "—"}</div>
               </div>
             </div>
+            {weekTarget.lichaamsgewicht && (
+              <div className="bg-primary/10 border border-primary/20 rounded-lg p-2.5 flex items-center justify-between">
+                <span className="text-[10px] text-primary font-bold uppercase">Gewicht doel (sheet)</span>
+                <span className="text-sm font-black text-primary">{weekTarget.lichaamsgewicht} kg</span>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -148,7 +191,7 @@ export default function NutritionList() {
                 <NutritionDayForm 
                   day={day} 
                   entry={entry} 
-                  target={target}
+                  weekTarget={weekTarget}
                   onSave={(data) => handleSave(day.id, data)} 
                   isSaving={createEntry.isPending || updateEntry.isPending}
                 />
@@ -161,56 +204,18 @@ export default function NutritionList() {
   );
 }
 
-function NutritionDayForm({ day, entry, target, onSave, isSaving }: { day: any, entry?: any, target?: any, onSave: (data: any) => void, isSaving: boolean }) {
-  const [formData, setFormData] = useState(() => {
-    let parsedNotes: any = {};
-    let pureNotes = entry?.notes || "";
-    try {
-      if (pureNotes.startsWith("{")) {
-        const parsed = JSON.parse(pureNotes);
-        parsedNotes = parsed.metrics || {};
-        pureNotes = parsed.text || "";
-      }
-    } catch(e) {}
-
-    return {
-      kcal: entry?.kcal?.toString() || target?.kcal?.toString() || "",
-      eiwittenG: entry?.eiwittenG?.toString() || target?.eiwittenG?.toString() || "",
-      koolhydratenG: entry?.koolhydratenG?.toString() || target?.koolhydratenG?.toString() || "",
-      vetenG: entry?.vetenG?.toString() || target?.vetenG?.toString() || "",
-      waterMl: entry?.waterMl?.toString() || target?.waterMl?.toString() || "",
-      slaapUren: parsedNotes.slaapUren || "",
-      stressNiveau: parsedNotes.stressNiveau || "",
-      energieNiveau: parsedNotes.energieNiveau || "",
-      lichaamsgewicht: parsedNotes.lichaamsgewicht || "",
-      notes: pureNotes
-    };
-  });
+function NutritionDayForm({ day, entry, weekTarget, onSave, isSaving }: { 
+  day: any, 
+  entry?: any, 
+  weekTarget?: WeekTarget | null,
+  onSave: (data: any) => void, 
+  isSaving: boolean 
+}) {
+  const [formData, setFormData] = useState(() => buildFormData(entry, weekTarget));
 
   useEffect(() => {
-    let parsedNotes: any = {};
-    let pureNotes = entry?.notes || "";
-    try {
-      if (pureNotes.startsWith("{")) {
-        const parsed = JSON.parse(pureNotes);
-        parsedNotes = parsed.metrics || {};
-        pureNotes = parsed.text || "";
-      }
-    } catch(e) {}
-
-    setFormData({
-      kcal: entry?.kcal?.toString() || target?.kcal?.toString() || "",
-      eiwittenG: entry?.eiwittenG?.toString() || target?.eiwittenG?.toString() || "",
-      koolhydratenG: entry?.koolhydratenG?.toString() || target?.koolhydratenG?.toString() || "",
-      vetenG: entry?.vetenG?.toString() || target?.vetenG?.toString() || "",
-      waterMl: entry?.waterMl?.toString() || target?.waterMl?.toString() || "",
-      slaapUren: parsedNotes.slaapUren || "",
-      stressNiveau: parsedNotes.stressNiveau || "",
-      energieNiveau: parsedNotes.energieNiveau || "",
-      lichaamsgewicht: parsedNotes.lichaamsgewicht || "",
-      notes: pureNotes
-    });
-  }, [entry, target]);
+    setFormData(buildFormData(entry, weekTarget));
+  }, [entry, weekTarget]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
@@ -228,15 +233,33 @@ function NutritionDayForm({ day, entry, target, onSave, isSaving }: { day: any, 
     onSave(payload);
   };
 
+  // Determine if each field has real entered data or is just a placeholder suggestion
+  const hasEntry = !!entry;
+
   return (
     <div className="bg-card border border-border rounded-xl p-5 shadow-sm space-y-6">
+
+      {/* Indication whether data is filled or placeholder */}
+      {!hasEntry && weekTarget?.kcal && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground bg-secondary/30 border border-border/50 rounded-lg px-3 py-2">
+          <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
+          Doelen uit sheet als startpunt — vul jouw werkelijke waarden in
+        </div>
+      )}
+      {hasEntry && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground bg-primary/10 border border-primary/20 rounded-lg px-3 py-2">
+          <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+          Eerder ingevuld — bewerken of opnieuw opslaan
+        </div>
+      )}
+
       <div className="space-y-2">
         <Label className="text-lg font-bold">Calorieën (kcal)</Label>
         <Input 
           type="number" inputMode="numeric"
           name="kcal" value={formData.kcal} onChange={handleChange}
           className="h-14 text-xl font-bold px-4" 
-          placeholder={target?.kcal ? `Doel: ${target.kcal} kcal` : "Bijv. 2500"}
+          placeholder={weekTarget?.kcal ? `Doel: ${weekTarget.kcal} kcal` : "Bijv. 2500"}
         />
       </div>
 
@@ -247,7 +270,7 @@ function NutritionDayForm({ day, entry, target, onSave, isSaving }: { day: any, 
             type="number" inputMode="numeric"
             name="eiwittenG" value={formData.eiwittenG} onChange={handleChange}
             className="h-12 text-center font-bold" 
-            placeholder={target?.eiwittenG ? `${target.eiwittenG}g` : "0"}
+            placeholder={weekTarget?.eiwittenG ? `${weekTarget.eiwittenG}g` : "0"}
           />
         </div>
         <div className="space-y-2">
@@ -256,7 +279,7 @@ function NutritionDayForm({ day, entry, target, onSave, isSaving }: { day: any, 
             type="number" inputMode="numeric"
             name="koolhydratenG" value={formData.koolhydratenG} onChange={handleChange}
             className="h-12 text-center font-bold" 
-            placeholder={target?.koolhydratenG ? `${target.koolhydratenG}g` : "0"}
+            placeholder={weekTarget?.koolhydratenG ? `${weekTarget.koolhydratenG}g` : "0"}
           />
         </div>
         <div className="space-y-2">
@@ -265,7 +288,7 @@ function NutritionDayForm({ day, entry, target, onSave, isSaving }: { day: any, 
             type="number" inputMode="numeric"
             name="vetenG" value={formData.vetenG} onChange={handleChange}
             className="h-12 text-center font-bold" 
-            placeholder={target?.vetenG ? `${target.vetenG}g` : "0"}
+            placeholder={weekTarget?.vetenG ? `${weekTarget.vetenG}g` : "0"}
           />
         </div>
       </div>
@@ -277,7 +300,7 @@ function NutritionDayForm({ day, entry, target, onSave, isSaving }: { day: any, 
             type="number" inputMode="numeric"
             name="waterMl" value={formData.waterMl} onChange={handleChange}
             className="h-12 px-4" 
-            placeholder={target?.waterMl ? `Doel: ${target.waterMl} ml` : "Bijv. 3000"}
+            placeholder={weekTarget?.waterMl ? `Doel: ${weekTarget.waterMl} ml` : "Bijv. 3000"}
           />
         </div>
         <div className="space-y-2">
@@ -286,7 +309,7 @@ function NutritionDayForm({ day, entry, target, onSave, isSaving }: { day: any, 
             type="number" inputMode="decimal"
             name="lichaamsgewicht" value={formData.lichaamsgewicht} onChange={handleChange}
             className="h-12 px-4" 
-            placeholder="Bijv. 80.5"
+            placeholder={weekTarget?.lichaamsgewicht ? `Doel: ${weekTarget.lichaamsgewicht} kg` : "Bijv. 80.5"}
           />
         </div>
       </div>
@@ -338,4 +361,30 @@ function NutritionDayForm({ day, entry, target, onSave, isSaving }: { day: any, 
       </Button>
     </div>
   );
+}
+
+function buildFormData(entry: any, weekTarget: WeekTarget | null | undefined) {
+  let parsedNotes: any = {};
+  let pureNotes = entry?.notes || "";
+  try {
+    if (pureNotes.startsWith("{")) {
+      const parsed = JSON.parse(pureNotes);
+      parsedNotes = parsed.metrics || {};
+      pureNotes = parsed.text || "";
+    }
+  } catch(e) {}
+
+  // If we have actual entry data, show that; otherwise show empty fields with targets as placeholders
+  return {
+    kcal: entry?.kcal?.toString() || "",
+    eiwittenG: entry?.eiwittenG?.toString() || "",
+    koolhydratenG: entry?.koolhydratenG?.toString() || "",
+    vetenG: entry?.vetenG?.toString() || "",
+    waterMl: entry?.waterMl?.toString() || "",
+    slaapUren: parsedNotes.slaapUren || "",
+    stressNiveau: parsedNotes.stressNiveau || "",
+    energieNiveau: parsedNotes.energieNiveau || "",
+    lichaamsgewicht: parsedNotes.lichaamsgewicht || "",
+    notes: pureNotes
+  };
 }
