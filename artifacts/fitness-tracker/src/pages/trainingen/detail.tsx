@@ -124,6 +124,13 @@ export default function TrainingDetail() {
   const getExerciseImage = (name: string) => {
     const lowerName = name.toLowerCase();
     
+    // Specific detailed mappings (uploaded images)
+    if (lowerName.includes("biceps cable curl") || lowerName.includes("cable curl")) return "/images/biceps_cable_curl.jpg";
+    if (lowerName.includes("anterior delt") || lowerName.includes("incline db press")) return "/images/anterior_delt_incline_db_press.jpg";
+    if (lowerName.includes("chest supported pulldown") || lowerName.includes("chest-supported pulldown")) return "/images/chest_supported_pulldown.jpg";
+    if (lowerName.includes("costal pec fly") || lowerName.includes("pec fly") || lowerName.includes("cable fly")) return "/images/costal_pec_fly.jpg";
+    if (lowerName.includes("cable row") || lowerName.includes("seated row")) return "/images/cable_row.jpg";
+
     // Benen & Billen
     if (lowerName.includes("front squat")) return "/images/frontsquat_muscles.png";
     if (lowerName.includes("squat")) return "/images/squat_muscles.png";
