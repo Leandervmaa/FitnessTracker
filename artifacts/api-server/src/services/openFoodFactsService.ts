@@ -135,35 +135,61 @@ function productToDetail(p: OFFProduct): FoodDetail | null {
   };
 }
 
-// ─── Search – tries multiple OFF endpoints ────────────────────────────────────
-
+/** Search for foods — Dutch/Belgian products appear first. */
 export async function searchFoodsOFF(query: string, maxResults = 20): Promise<FoodSearchResult[]> {
   const encoded = encodeURIComponent(query);
+  const fields = "id,code,product_name,product_name_nl,brands,nutriments,serving_size";
 
-  // Endpoint 1: OFF v2 search
-  const data1 = await safeFetch(
-    `https://world.openfoodfacts.org/api/v2/search?q=${encoded}&page_size=${maxResults}&fields=id,code,product_name,product_name_nl,brands,nutriments,serving_size`
+  // Pass 1: Dutch + Belgian products (most relevant for NL users)
+  const nlData = await safeFetch(
+    `https://world.openfoodfacts.org/api/v2/search?q=${encoded}&page_size=${maxResults}&fields=${fields}&sort_by=unique_scans_n&countries_tags=en:netherlands,en:belgium`
   );
-  if (data1?.products?.length) {
-    logger.info({ count: data1.products.length, source: "OFF v2" }, "Food search success");
-    return (data1.products as OFFProduct[])
-      .map(productToSearchResult)
-      .filter((r): r is FoodSearchResult => r !== null);
+
+  const seen = new Set<string>();
+  const nlResults: FoodSearchResult[] = [];
+
+  if (nlData?.products?.length) {
+    for (const p of nlData.products as OFFProduct[]) {
+      const r = productToSearchResult(p);
+      if (r && r.food_id) { nlResults.push(r); seen.add(r.food_id); }
+    }
   }
 
-  // Endpoint 2: OFF cgi search (legacy)
-  const data2 = await safeFetch(
-    `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encoded}&json=true&page_size=${maxResults}&fields=id,code,product_name,product_name_nl,brands,nutriments,serving_size&action=process`
-  );
-  if (data2?.products?.length) {
-    logger.info({ count: data2.products.length, source: "OFF cgi" }, "Food search success");
-    return (data2.products as OFFProduct[])
-      .map(productToSearchResult)
-      .filter((r): r is FoodSearchResult => r !== null);
+  // Pass 2: Global results to fill remaining slots
+  const remaining = maxResults - nlResults.length;
+  const globalResults: FoodSearchResult[] = [];
+
+  if (remaining > 0) {
+    const globalData = await safeFetch(
+      `https://world.openfoodfacts.org/api/v2/search?q=${encoded}&page_size=${maxResults}&fields=${fields}&sort_by=unique_scans_n`
+    );
+    if (globalData?.products?.length) {
+      for (const p of globalData.products as OFFProduct[]) {
+        const r = productToSearchResult(p);
+        if (r && r.food_id && !seen.has(r.food_id)) {
+          globalResults.push(r);
+          seen.add(r.food_id);
+        }
+      }
+    }
   }
 
-  logger.warn({ query }, "Open Food Facts search returned no results from any endpoint");
-  return [];
+  // Fallback: cgi endpoint if everything else returned nothing
+  if (nlResults.length === 0 && globalResults.length === 0) {
+    const cgiData = await safeFetch(
+      `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encoded}&json=true&page_size=${maxResults}&fields=${fields}&action=process`
+    );
+    if (cgiData?.products?.length) {
+      logger.info({ count: cgiData.products.length, source: "OFF cgi fallback" }, "Food search via fallback");
+      return (cgiData.products as OFFProduct[]).map(productToSearchResult).filter((r): r is FoodSearchResult => r !== null);
+    }
+    logger.warn({ query }, "All Open Food Facts search endpoints returned no results");
+    return [];
+  }
+
+  const combined = [...nlResults, ...globalResults.slice(0, remaining)];
+  logger.info({ nl: nlResults.length, global: globalResults.length }, "Food search success");
+  return combined;
 }
 
 // ─── Product detail by ID / barcode ──────────────────────────────────────────
