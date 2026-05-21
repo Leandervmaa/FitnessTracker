@@ -140,7 +140,7 @@ async function writeExerciseLogsToWeekSheets(wb: XLSX.WorkBook): Promise<void> {
   }
 }
 
-// ─── nutrition & dagboek → Logboek sheet ─────────────────────────────────────
+// ─── nutrition & dagboek → Progressie sheet ─────────────────────────────────────
 
 const DAYS_NL: Record<string, string> = {
   mon: "Maandag",
@@ -152,66 +152,98 @@ const DAYS_NL: Record<string, string> = {
   sun: "Zondag",
 };
 
-async function writeNutritionToLogboek(wb: XLSX.WorkBook): Promise<void> {
+async function writeNutritionToProgressie(wb: XLSX.WorkBook): Promise<void> {
   const entries = await db.select().from(nutritionEntriesTable);
   if (entries.length === 0) return;
 
-  // Find or create "Dagboek" sheet (or use "Logboek" if present)
-  let sheetName = wb.SheetNames.find((n) => /dagboek/i.test(n)) 
-    ?? wb.SheetNames.find((n) => /logboek/i.test(n));
-
+  const sheetName = wb.SheetNames.find((n) => /progressie/i.test(n));
   if (!sheetName) {
-    // Create new sheet
-    sheetName = "Dagboek";
-    const newSheet: XLSX.WorkSheet = {};
-    newSheet["!ref"] = "A1:J1";
-    wb.SheetNames.push(sheetName);
-    wb.Sheets[sheetName] = newSheet;
+    logger.warn("Progressie sheet not found, skipping nutrition export");
+    return;
   }
 
   const sheet = wb.Sheets[sheetName];
+  const rows: string[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: false });
 
-  // Build data rows
-  const headers = [
-    "Week", "Dag", "Datum", "Calorieën (kcal)", "Eiwit (g)", "Koolhydraten (g)",
-    "Vetten (g)", "Water (ml)", "Lichaamsgewicht (kg)", "Slaap (uur)", "Stress (1-10)", "Energie (1-10)", "Notities"
-  ];
-
-  const rows: (string | number)[][] = [headers];
-
+  // Group entries by weekNumber and day name (lowercased)
+  const entriesMap = new Map<string, typeof entries[0]>();
   for (const entry of entries) {
-    let metrics: Record<string, string> = {};
-    let notes = entry.notes || "";
-    try {
-      if (notes.startsWith("{")) {
-        const parsed = JSON.parse(notes);
-        metrics = parsed.metrics || {};
-        notes = parsed.text || "";
-      }
-    } catch { /* ignore */ }
-
     const dayNL = DAYS_NL[entry.day] || entry.dayLabel || entry.day;
-
-    rows.push([
-      entry.weekNumber,
-      dayNL,
-      "", // datum (not tracked)
-      entry.kcal ? parseFloat(entry.kcal) : "",
-      entry.eiwittenG ? parseFloat(entry.eiwittenG) : "",
-      entry.koolhydratenG ? parseFloat(entry.koolhydratenG) : "",
-      entry.vetenG ? parseFloat(entry.vetenG) : "",
-      entry.waterMl ? parseFloat(entry.waterMl) : "",
-      metrics.lichaamsgewicht ? parseFloat(metrics.lichaamsgewicht) : "",
-      metrics.slaapUren ? parseFloat(metrics.slaapUren) : "",
-      metrics.stressNiveau ? parseFloat(metrics.stressNiveau) : "",
-      metrics.energieNiveau ? parseFloat(metrics.energieNiveau) : "",
-      notes,
-    ]);
+    entriesMap.set(`${entry.weekNumber}-${dayNL.toLowerCase()}`, entry);
   }
 
-  // Overwrite the sheet with fresh data
-  const newSheet = XLSX.utils.aoa_to_sheet(rows);
-  wb.Sheets[sheetName] = newSheet;
+  let currentWeekNumber: number | null = null;
+  let colGewicht = 1;
+  let colKcal = 2;
+  let colBuik = 3;
+  let colHeup = 4;
+  let colKracht = 5;
+  let colEnergie = 6;
+  let colSlaap = 7;
+  let colStress = 8;
+  let colStappen = 9;
+
+  for (let ri = 0; ri < rows.length; ri++) {
+    const row = rows[ri];
+    const col0 = trimCell(row[0]);
+    if (!col0) continue;
+
+    const col0Lower = col0.toLowerCase();
+
+    // Check for "Week N"
+    const weekMatch = col0.match(/^week\s+(\d+)$/i);
+    if (weekMatch) {
+      currentWeekNumber = parseInt(weekMatch[1], 10);
+
+      // detect columns
+      const headerRow = row.map((c) => trimCell(c).toLowerCase());
+      for (let ci = 1; ci < headerRow.length; ci++) {
+        const h = headerRow[ci];
+        if (h === "gewicht") colGewicht = ci;
+        else if (h.includes("kcal")) colKcal = ci;
+        else if (h.includes("buikomvang")) colBuik = ci;
+        else if (h.includes("heupomvang")) colHeup = ci;
+        else if (h.includes("krachtniveau")) colKracht = ci;
+        else if (h.includes("energieniveau")) colEnergie = ci;
+        else if (h === "slaap") colSlaap = ci;
+        else if (h === "stress") colStress = ci;
+        else if (h.includes("stappen")) colStappen = ci;
+      }
+      continue;
+    }
+
+    if (!currentWeekNumber) continue;
+
+    // Is it a day row?
+    const entry = entriesMap.get(`${currentWeekNumber}-${col0Lower}`);
+    if (entry) {
+      let metrics: Record<string, string> = {};
+      try {
+        if (entry.notes && entry.notes.startsWith("{")) {
+          metrics = JSON.parse(entry.notes).metrics || {};
+        }
+      } catch { /* ignore */ }
+
+      // Write mapped values back using setCellValue
+      if (metrics.lichaamsgewicht) setCellValue(sheet, colGewicht, ri, parseFloat(metrics.lichaamsgewicht));
+      if (entry.kcal) setCellValue(sheet, colKcal, ri, parseFloat(entry.kcal));
+      if (metrics.buikomvang) setCellValue(sheet, colBuik, ri, parseFloat(metrics.buikomvang));
+      if (metrics.heupomvang) setCellValue(sheet, colHeup, ri, parseFloat(metrics.heupomvang));
+      if (metrics.krachtniveau) setCellValue(sheet, colKracht, ri, parseFloat(metrics.krachtniveau));
+      if (metrics.energieNiveau) setCellValue(sheet, colEnergie, ri, parseFloat(metrics.energieNiveau));
+      if (metrics.slaapUren) setCellValue(sheet, colSlaap, ri, parseFloat(metrics.slaapUren));
+      if (metrics.stressNiveau) setCellValue(sheet, colStress, ri, parseFloat(metrics.stressNiveau));
+      if (metrics.stappen) setCellValue(sheet, colStappen, ri, parseFloat(metrics.stappen));
+    }
+  }
+
+  // Also remove the old Logboek/Dagboek sheet if it exists, as it's no longer used
+  const oldSheetIndex = wb.SheetNames.findIndex(n => /dagboek|logboek/i.test(n));
+  if (oldSheetIndex >= 0) {
+    const oldSheetName = wb.SheetNames[oldSheetIndex];
+    wb.SheetNames.splice(oldSheetIndex, 1);
+    delete wb.Sheets[oldSheetName];
+  }
 }
 
 // ─── feedback answers → Feedback sheet ───────────────────────────────────────
@@ -297,9 +329,9 @@ export async function generateExportExcel(): Promise<Buffer> {
   }
 
   try {
-    await writeNutritionToLogboek(wb);
+    await writeNutritionToProgressie(wb);
   } catch (err) {
-    logger.warn({ err }, "Failed to write nutrition to Excel");
+    logger.warn({ err }, "Failed to write nutrition to Excel Progressie sheet");
   }
 
   try {
