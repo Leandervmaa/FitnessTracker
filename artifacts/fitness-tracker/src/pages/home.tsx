@@ -5,7 +5,7 @@ import { useListWeeks } from "@workspace/api-client-react";
 import {
   Dumbbell, Book, MessageSquare, ChevronDown, Settings,
   AlertCircle, CheckCircle2, FileSpreadsheet, Download, Camera,
-  Clock
+  Clock, ArrowRightLeft
 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
@@ -253,6 +253,11 @@ export default function Home() {
           <Link href="/excel-viewer">
             <Button variant="outline" size="icon" className="rounded-full shadow-md bg-card border-border h-12 w-12 flex-shrink-0" title="Bekijk Excel schema">
               <FileSpreadsheet className="h-5 w-5 text-green-600 dark:text-green-400" />
+            </Button>
+          </Link>
+          <Link href="/vergelijk">
+            <Button variant="outline" size="icon" className="rounded-full shadow-md bg-card border-border h-12 w-12 flex-shrink-0" title="Vergelijk Weken (voor PT)">
+              <ArrowRightLeft className="h-5 w-5 text-primary" />
             </Button>
           </Link>
           <DropdownMenu>

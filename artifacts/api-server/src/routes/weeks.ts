@@ -123,6 +123,7 @@ router.get("/:weekNumber/workouts", async (req, res) => {
       dayLabel: workout.dayLabel,
       exerciseCount: workout.exercises.length,
       completedCount: workout.exercises.filter((e) => completedExerciseIds.has(e.id)).length,
+      exercises: workout.exercises.map(e => ({ id: e.id, name: e.name })),
     }));
 
     return void res.json(workoutSummaries);

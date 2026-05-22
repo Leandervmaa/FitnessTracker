@@ -14,6 +14,7 @@ import FeedbackList from "@/pages/feedback/index";
 import Instellen from "@/pages/instellen/index";
 import ExcelViewer from "@/pages/excel-viewer";
 import ProgressieFotos from "@/pages/progressie-fotos/index";
+import Vergelijk from "@/pages/vergelijk/index";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -42,6 +43,7 @@ function Router() {
       <Route path="/instellen" component={Instellen} />
       <Route path="/excel-viewer" component={ExcelViewer} />
       <Route path="/progressie-fotos" component={ProgressieFotos} />
+      <Route path="/vergelijk" component={Vergelijk} />
       <Route component={NotFound} />
     </Switch>
   );

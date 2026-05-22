@@ -3,6 +3,7 @@ import { useWeek } from "@/components/week-context";
 import { WeekSelector } from "@/components/week-selector";
 import { 
   useGetNutritionEntries, 
+  useGetNutritionTarget,
   useCreateNutritionEntry, 
   useUpdateNutritionEntry,
   getGetNutritionEntriesQueryKey
@@ -74,6 +75,7 @@ export default function DagboekPage() {
   const [activeDay, setActiveDay] = useState(DAYS[0].id);
 
   const { data: progressieWeek } = useProgressieWeek(selectedWeek ?? undefined);
+  const { data: nutritionTarget } = useGetNutritionTarget();
 
   const { data: entries } = useGetNutritionEntries(
     { weekNumber: selectedWeek || 0 },
@@ -225,6 +227,7 @@ export default function DagboekPage() {
                   weekNumber={selectedWeek!}
                   entry={entry}
                   sheetDay={sheetDay ?? null}
+                  targetKcal={nutritionTarget?.kcal ?? null}
                   onSave={(data) => handleSave(day.id, data)}
                   isSaving={createEntry.isPending || updateEntry.isPending}
                 />
@@ -250,11 +253,12 @@ function parseEntry(entry: any) {
   return { metrics, notes };
 }
 
-function DagForm({ day, weekNumber, entry, sheetDay, onSave, isSaving }: {
+function DagForm({ day, weekNumber, entry, sheetDay, targetKcal, onSave, isSaving }: {
   day: { id: string; label: string; nl: string };
   weekNumber: number;
   entry?: any;
   sheetDay: any | null;
+  targetKcal: number | null;
   onSave: (data: any) => void;
   isSaving: boolean;
 }) {
@@ -373,6 +377,7 @@ function DagForm({ day, weekNumber, entry, sheetDay, onSave, isSaving }: {
           day={day.id}
           dayLabel={day.nl}
           sheetKcal={sheetDay?.kcal ?? null}
+          targetKcal={targetKcal}
           savedManualKcal={currentManualKcal}
           onManualKcalChange={setCurrentManualKcal}
         />

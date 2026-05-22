@@ -356,12 +356,13 @@ interface Props {
   day: string;
   dayLabel: string;
   sheetKcal?: number | null;
+  targetKcal?: number | null;
   savedManualKcal?: number;           // restored from DB on load
   onTotalKcalChange?: (totalKcal: number) => void;
   onManualKcalChange?: (manual: number) => void; // so parent can persist it
 }
 
-export default function FoodTracker({ weekNumber, day, dayLabel, sheetKcal, savedManualKcal, onTotalKcalChange, onManualKcalChange }: Props) {
+export default function FoodTracker({ weekNumber, day, dayLabel, sheetKcal, targetKcal, savedManualKcal, onTotalKcalChange, onManualKcalChange }: Props) {
   const { toast } = useToast();
   const qc = useQueryClient();
 
@@ -554,13 +555,32 @@ export default function FoodTracker({ weekNumber, day, dayLabel, sheetKcal, save
             <span>Getrackte producten ({foodLogs.length})</span>
             <span className="font-semibold">{loggedKcal > 0 ? `${Math.round(loggedKcal)} kcal` : "—"}</span>
           </div>
-          <div className="border-t border-primary/20 pt-2 flex justify-between">
+          <div className="border-t border-primary/20 pt-2 flex justify-between items-center">
             <span className="font-black">Totaal</span>
-            <span className="font-black text-xl text-primary">{totalKcal > 0 ? `${totalKcal} kcal` : "0 kcal"}</span>
+            <div className="text-right">
+              <span className="font-black text-xl text-primary">{totalKcal > 0 ? `${totalKcal} kcal` : "0 kcal"}</span>
+              {targetKcal && (
+                 <span className="ml-2 text-xs font-bold text-muted-foreground bg-secondary px-2 py-0.5 rounded-full">
+                   / {targetKcal} kcal
+                 </span>
+              )}
+            </div>
           </div>
-          {sheetKcal != null && totalKcal > 0 && (
-            <div className="flex justify-between text-[10px] text-muted-foreground pt-0.5">
-              <span>Verschil met doel ({sheetKcal} kcal)</span>
+          
+          {/* Difference with target */}
+          {targetKcal != null && totalKcal > 0 && (
+            <div className="flex justify-between text-[11px] pt-1 mt-1 border-t border-primary/10">
+              <span className="text-muted-foreground font-semibold">Verschil met voedingsplan</span>
+              <span className={totalKcal > targetKcal ? "text-orange-500 font-bold" : "text-green-600 dark:text-green-400 font-bold"}>
+                {totalKcal > targetKcal ? `+${totalKcal - targetKcal}` : `${totalKcal - targetKcal}`} kcal
+              </span>
+            </div>
+          )}
+          
+          {/* Fallback to sheetKcal diff if no targetKcal */}
+          {!targetKcal && sheetKcal != null && totalKcal > 0 && (
+            <div className="flex justify-between text-[11px] pt-1 mt-1 border-t border-primary/10 text-muted-foreground">
+              <span>Verschil met sheet ({sheetKcal} kcal)</span>
               <span className={totalKcal > sheetKcal ? "text-orange-500 font-bold" : "text-green-600 dark:text-green-400 font-bold"}>
                 {totalKcal > sheetKcal ? `+${totalKcal - sheetKcal}` : `${totalKcal - sheetKcal}`} kcal
               </span>
