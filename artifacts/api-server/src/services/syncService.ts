@@ -68,8 +68,8 @@ export async function syncLogsFromExcel(): Promise<void> {
                 repsSetEnd = setEnd + 10;
               }
               colMap = { werkSets: werkSets !== -1 ? werkSets : 8, reps: reps !== -1 ? reps : 9, setStart, setEnd, repsSetStart, repsSetEnd } as any;
+              continue;
             }
-            continue;
 
           if (currentWeek === null) continue;
 
@@ -97,17 +97,25 @@ export async function syncLogsFromExcel(): Promise<void> {
     async function processExcelRow(row: string[], colMap: any, weekNum: number, workoutId: string, order: number, rawName: string) {
       const cleanName = rawName.replace(/^\s*[A-Za-z]\s*:\s*/, "").trim().toLowerCase();
       
-      const weights: string[] = [];
-      for (let c = colMap.setStart; c <= colMap.setEnd; c++) {
-        if (c < row.length) {
-          const val = toStr(row[c]);
-          if (val && val !== "-") {
-            weights.push(val);
-          }
+      const numSets = colMap.setEnd - colMap.setStart + 1;
+      let lastFilledIndex = -1;
+
+      for (let i = 0; i < numSets; i++) {
+        const wCol = colMap.setStart + i;
+        const rCol = colMap.repsSetStart + i;
+
+        const wVal = wCol < row.length ? toStr(row[wCol]) || "" : "";
+        const rVal = (colMap.repsSetStart !== -1 && rCol < row.length) ? toStr(row[rCol]) || "" : "";
+
+        const hasWeight = wVal !== "" && wVal !== "-";
+        const hasRep = rVal !== "" && !rVal.includes("-") && !isNaN(parseInt(rVal, 10));
+
+        if (hasWeight || hasRep) {
+          lastFilledIndex = i;
         }
       }
 
-      if (weights.length > 0) {
+      if (lastFilledIndex >= 0) {
         const weekProgram = getWeek(weekNum);
         if (!weekProgram) return;
 
@@ -119,6 +127,25 @@ export async function syncLogsFromExcel(): Promise<void> {
           const workoutDef = weekProgram.workouts.find(w => w.exercises.some(e => e.id === exerciseDef.id));
           if (!workoutDef) return;
 
+          const weightsArr: string[] = [];
+          const repsArr: string[] = [];
+
+          for (let i = 0; i <= lastFilledIndex; i++) {
+            const wCol = colMap.setStart + i;
+            const rCol = colMap.repsSetStart + i;
+
+            const wVal = wCol < row.length ? toStr(row[wCol]) || "" : "";
+            const rVal = (colMap.repsSetStart !== -1 && rCol < row.length) ? toStr(row[rCol]) || "" : "";
+
+            weightsArr.push(wVal === "-" ? "" : wVal);
+
+            const hasRep = rVal !== "" && !rVal.includes("-") && !isNaN(parseInt(rVal, 10));
+            repsArr.push(hasRep ? rVal : "0");
+          }
+
+          const finalWeights = weightsArr.every(w => w === "") ? "" : weightsArr.join(", ");
+          const finalReps = repsArr.join(", ");
+
           const existing = await db
             .select()
             .from(exerciseLogsTable)
@@ -129,23 +156,6 @@ export async function syncLogsFromExcel(): Promise<void> {
               )
             );
 
-          const repsArr: string[] = [];
-          for (let c = colMap.repsSetStart; c <= colMap.repsSetEnd; c++) {
-            if (c < row.length) {
-              const val = toStr(row[c]);
-              // Ignore values that look like rep ranges (e.g. "10-15")
-              if (val && !val.includes("-")) {
-                repsArr.push(val);
-              } else {
-                repsArr.push("");
-              }
-            } else {
-              repsArr.push("");
-            }
-          }
-          // Truncate to weights length
-          const finalReps = repsArr.slice(0, weights.length).map(r => r || "0").join(", ");
-
           if (existing.length === 0) {
             await db.insert(exerciseLogsTable).values({
               exerciseId: exerciseDef.id,
@@ -153,16 +163,29 @@ export async function syncLogsFromExcel(): Promise<void> {
               weekNumber: weekNum,
               sets: exerciseDef.sets,
               reps: finalReps,
-              weight: weights.join(", "),
+              weight: finalWeights,
               notes: "Geïmporteerd uit Excel bestand"
             });
             importCount++;
-          } else if (existing[0].notes?.includes("Geïmporteerd") && existing[0].reps !== finalReps) {
-            // Fix previously imported records that had wrong reps
-            await db.update(exerciseLogsTable)
-              .set({ reps: finalReps })
-              .where(eq(exerciseLogsTable.id, existing[0].id));
-            importCount++;
+          } else {
+            const dbLog = existing[0];
+            const isHistorical = weekNum <= 14;
+            const repsDifferent = dbLog.reps !== finalReps;
+            const weightDifferent = dbLog.weight !== finalWeights;
+            const needsFix = repsDifferent || weightDifferent;
+
+            if (needsFix && (isHistorical || dbLog.notes?.includes("Geïmporteerd"))) {
+              await db.update(exerciseLogsTable)
+                .set({ 
+                  reps: finalReps,
+                  weight: finalWeights,
+                  notes: dbLog.notes?.includes("Geïmporteerd") 
+                    ? dbLog.notes 
+                    : `${dbLog.notes ? dbLog.notes + " | " : ""}Geïmporteerd/Gecorrigeerd uit Excel`
+                })
+                .where(eq(exerciseLogsTable.id, dbLog.id));
+              importCount++;
+            }
           }
         }
       }

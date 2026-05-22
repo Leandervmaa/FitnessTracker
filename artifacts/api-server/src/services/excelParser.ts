@@ -17,7 +17,14 @@ import { logger } from "../lib/logger.js";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-export const EXCEL_PATH = path.resolve(__dirname, "../data/programma.xlsx");
+let resolvedExcelPath = path.resolve(__dirname, "../data/programma.xlsx");
+if (!fs.existsSync(resolvedExcelPath)) {
+  const fallbackPath = path.resolve(__dirname, "../../data/programma.xlsx");
+  if (fs.existsSync(fallbackPath)) {
+    resolvedExcelPath = fallbackPath;
+  }
+}
+export const EXCEL_PATH = resolvedExcelPath;
 
 export interface ParsedExercise {
   id: string;
@@ -72,12 +79,23 @@ export interface ParsedProgressieDay {
   slaap: number | null;
   stress: number | null;
   stappen: number | null;
+  // Circumference measurements
+  schouders: number | null;
+  borstLats: number | null;
+  armLinks: number | null;
+  armRechts: number | null;
+  beenLinks: number | null;
+  beenRechts: number | null;
+  kuitLinks: number | null;
+  kuitRechts: number | null;
+  heupBil: number | null;
 }
 
 /** All 7 days for one week from the Progressie sheet */
 export interface ParsedProgressieWeek {
   weekNumber: number;
   days: ParsedProgressieDay[];
+  requestedFields: string[];
 }
 
 export interface ParsedFeedbackAnswer {
@@ -241,36 +259,68 @@ function lastSetWeight(row: string[], colMap: ColMap): string | null {
 }
 
 function getSetWeightsList(row: string[], colMap: ColMap): string {
+  const numSets = colMap.setEnd - colMap.setStart + 1;
+  let lastFilledIndex = -1;
+
+  for (let i = 0; i < numSets; i++) {
+    const wCol = colMap.setStart + i;
+    const rCol = colMap.repsSetStart + i;
+
+    const wVal = wCol < row.length ? trimCell(row[wCol]) : "";
+    const rVal = (colMap.repsSetStart !== -1 && rCol < row.length) ? trimCell(row[rCol]) : "";
+
+    const hasWeight = wVal !== "" && wVal !== "-";
+    const hasRep = rVal !== "" && !rVal.includes("-") && !isNaN(parseInt(rVal, 10));
+
+    if (hasWeight || hasRep) {
+      lastFilledIndex = i;
+    }
+  }
+
+  if (lastFilledIndex === -1) return "";
+
   const weights: string[] = [];
-  for (let c = colMap.setStart; c <= colMap.setEnd; c++) {
-    const s = trimCell(row[c]);
-    weights.push(s);
+  for (let i = 0; i <= lastFilledIndex; i++) {
+    const wCol = colMap.setStart + i;
+    const wVal = wCol < row.length ? trimCell(row[wCol]) : "";
+    weights.push(wVal === "-" ? "" : wVal);
   }
-  while (weights.length > 0 && weights[weights.length - 1] === "") {
-    weights.pop();
-  }
+
+  if (weights.every(w => w === "")) return "";
   return weights.join(", ");
 }
 
 function getSetRepsList(row: string[], colMap: ColMap): string {
   if (colMap.repsSetStart === -1) return "";
-  const reps: string[] = [];
-  const numWeights = getSetWeightsList(row, colMap).split(',').filter(x => x.trim() !== "").length;
-  
-  for (let c = colMap.repsSetStart; c <= colMap.repsSetEnd; c++) {
-    const s = trimCell(row[c]);
-    if (s !== "" && !s.includes("-")) {
-      reps.push(s);
-    } else {
-      reps.push("");
+  const numSets = colMap.setEnd - colMap.setStart + 1;
+  let lastFilledIndex = -1;
+
+  for (let i = 0; i < numSets; i++) {
+    const wCol = colMap.setStart + i;
+    const rCol = colMap.repsSetStart + i;
+
+    const wVal = wCol < row.length ? trimCell(row[wCol]) : "";
+    const rVal = (colMap.repsSetStart !== -1 && rCol < row.length) ? trimCell(row[rCol]) : "";
+
+    const hasWeight = wVal !== "" && wVal !== "-";
+    const hasRep = rVal !== "" && !rVal.includes("-") && !isNaN(parseInt(rVal, 10));
+
+    if (hasWeight || hasRep) {
+      lastFilledIndex = i;
     }
   }
-  
-  const finalReps = reps.slice(0, numWeights).map(r => r || "0");
-  while (finalReps.length > 0 && finalReps[finalReps.length - 1] === "0") {
-    finalReps.pop();
+
+  if (lastFilledIndex === -1) return "";
+
+  const reps: string[] = [];
+  for (let i = 0; i <= lastFilledIndex; i++) {
+    const rCol = colMap.repsSetStart + i;
+    const rVal = (colMap.repsSetStart !== -1 && rCol < row.length) ? trimCell(row[rCol]) : "";
+    const hasRep = rVal !== "" && !rVal.includes("-") && !isNaN(parseInt(rVal, 10));
+    reps.push(hasRep ? rVal : "0");
   }
-  return finalReps.join(", ");
+
+  return reps.join(", ");
 }
 
 // ─── training-sheet parser ───────────────────────────────────────────────────
@@ -601,17 +651,25 @@ function parseProgressie(wb: XLSX.WorkBook): ParsedProgressieWeek[] {
   const results: ParsedProgressieWeek[] = [];
   let currentWeek: ParsedProgressieWeek | null = null;
 
-  // Column indices — fixed by sheet structure (col 0 = dag, 1=gewicht, 2=kcal, 3=buik, 4=heup, 5=kracht, 6=energie, 7=slaap, 8=stress, 9=stappen)
-  // We detect them dynamically from the header row to be safe
-  let colGewicht = 1;
-  let colKcal = 2;
-  let colBuik = 3;
-  let colHeup = 4;
-  let colKracht = 5;
-  let colEnergie = 6;
-  let colSlaap = 7;
-  let colStress = 8;
-  let colStappen = 9;
+  let colGewicht = -1;
+  let colKcal = -1;
+  let colBuik = -1;
+  let colHeup = -1;
+  let colKracht = -1;
+  let colEnergie = -1;
+  let colSlaap = -1;
+  let colStress = -1;
+  let colStappen = -1;
+
+  let colSchouders = -1;
+  let colBorstLats = -1;
+  let colArmLinks = -1;
+  let colArmRechts = -1;
+  let colBeenLinks = -1;
+  let colBeenRechts = -1;
+  let colKuitLinks = -1;
+  let colKuitRechts = -1;
+  let colHeupBil = -1;
 
   for (let ri = 0; ri < rows.length; ri++) {
     const row = rows[ri];
@@ -627,22 +685,73 @@ function parseProgressie(wb: XLSX.WorkBook): ParsedProgressieWeek[] {
       if (currentWeek && currentWeek.days.length > 0) results.push(currentWeek);
 
       const weekNumber = parseInt(weekMatch[1], 10);
-      currentWeek = { weekNumber, days: [] };
+      currentWeek = { weekNumber, days: [], requestedFields: [] };
 
       // Detect column positions from this header row
       const headerRow = row.map((c) => trimCell(c).toLowerCase());
+      const fieldsList: string[] = [];
+
       for (let ci = 1; ci < headerRow.length; ci++) {
         const h = headerRow[ci];
-        if (h === "gewicht") colGewicht = ci;
-        else if (h.includes("kcal")) colKcal = ci;
-        else if (h.includes("buikomvang")) colBuik = ci;
-        else if (h.includes("heupomvang")) colHeup = ci;
-        else if (h.includes("krachtniveau")) colKracht = ci;
-        else if (h.includes("energieniveau")) colEnergie = ci;
-        else if (h === "slaap") colSlaap = ci;
-        else if (h === "stress") colStress = ci;
-        else if (h.includes("stappen")) colStappen = ci;
+        if (!h) continue;
+
+        if (h === "gewicht") {
+          colGewicht = ci;
+          fieldsList.push("gewicht");
+        } else if (h.includes("kcal")) {
+          colKcal = ci;
+          fieldsList.push("kcal");
+        } else if (h.includes("buikomvang")) {
+          colBuik = ci;
+          fieldsList.push("buikomvang");
+        } else if (h.includes("heupomvang")) {
+          colHeup = ci;
+          fieldsList.push("heupomvang");
+        } else if (h.includes("krachtniveau")) {
+          colKracht = ci;
+          fieldsList.push("krachtniveau");
+        } else if (h.includes("energieniveau")) {
+          colEnergie = ci;
+          fieldsList.push("energieniveau");
+        } else if (h === "slaap") {
+          colSlaap = ci;
+          fieldsList.push("slaap");
+        } else if (h === "stress") {
+          colStress = ci;
+          fieldsList.push("stress");
+        } else if (h.includes("stappen")) {
+          colStappen = ci;
+          fieldsList.push("stappen");
+        } else if (h === "schouders") {
+          colSchouders = ci;
+          fieldsList.push("schouders");
+        } else if (h === "borst/lats" || h.includes("borst")) {
+          colBorstLats = ci;
+          fieldsList.push("borstLats");
+        } else if (h === "arm links" || (h.includes("arm") && h.includes("link"))) {
+          colArmLinks = ci;
+          fieldsList.push("armLinks");
+        } else if (h === "arm rechts" || (h.includes("arm") && h.includes("recht"))) {
+          colArmRechts = ci;
+          fieldsList.push("armRechts");
+        } else if (h === "been links" || (h.includes("been") && h.includes("link"))) {
+          colBeenLinks = ci;
+          fieldsList.push("beenLinks");
+        } else if (h === "been rechts" || (h.includes("been") && h.includes("recht"))) {
+          colBeenRechts = ci;
+          fieldsList.push("beenRechts");
+        } else if (h === "kuit links" || (h.includes("kuit") && h.includes("link"))) {
+          colKuitLinks = ci;
+          fieldsList.push("kuitLinks");
+        } else if (h === "kuit rechts" || (h.includes("kuit") && h.includes("recht"))) {
+          colKuitRechts = ci;
+          fieldsList.push("kuitRechts");
+        } else if (h === "heup/bil" || h.includes("heup/bil") || h.includes("heup")) {
+          colHeupBil = ci;
+          fieldsList.push("heupBil");
+        }
       }
+      currentWeek.requestedFields = fieldsList;
       continue;
     }
 
@@ -655,15 +764,25 @@ function parseProgressie(wb: XLSX.WorkBook): ParsedProgressieWeek[] {
     currentWeek.days.push({
       dagNl: col0,
       dayId,
-      gewicht:      toNum(row[colGewicht]),
-      kcal:         toNum(row[colKcal]),
-      buikomvang:   toNum(row[colBuik]),
-      heupomvang:   toNum(row[colHeup]),
-      krachtniveau: toNum(row[colKracht]),
-      energieniveau:toNum(row[colEnergie]),
-      slaap:        toNum(row[colSlaap]),
-      stress:       toNum(row[colStress]),
-      stappen:      toNum(row[colStappen]),
+      gewicht:      colGewicht !== -1 ? toNum(row[colGewicht]) : null,
+      kcal:         colKcal !== -1 ? toNum(row[colKcal]) : null,
+      buikomvang:   colBuik !== -1 ? toNum(row[colBuik]) : null,
+      heupomvang:   colHeup !== -1 ? toNum(row[colHeup]) : null,
+      krachtniveau: colKracht !== -1 ? toNum(row[colKracht]) : null,
+      energieniveau:colEnergie !== -1 ? toNum(row[colEnergie]) : null,
+      slaap:        colSlaap !== -1 ? toNum(row[colSlaap]) : null,
+      stress:       colStress !== -1 ? toNum(row[colStress]) : null,
+      stappen:      colStappen !== -1 ? toNum(row[colStappen]) : null,
+      
+      schouders:    colSchouders !== -1 ? toNum(row[colSchouders]) : null,
+      borstLats:    colBorstLats !== -1 ? toNum(row[colBorstLats]) : null,
+      armLinks:     colArmLinks !== -1 ? toNum(row[colArmLinks]) : null,
+      armRechts:    colArmRechts !== -1 ? toNum(row[colArmRechts]) : null,
+      beenLinks:    colBeenLinks !== -1 ? toNum(row[colBeenLinks]) : null,
+      beenRechts:   colBeenRechts !== -1 ? toNum(row[colBeenRechts]) : null,
+      kuitLinks:    colKuitLinks !== -1 ? toNum(row[colKuitLinks]) : null,
+      kuitRechts:   colKuitRechts !== -1 ? toNum(row[colKuitRechts]) : null,
+      heupBil:      colHeupBil !== -1 ? toNum(row[colHeupBil]) : null,
     });
   }
 

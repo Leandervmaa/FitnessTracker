@@ -41,11 +41,21 @@ interface ProgressieDay {
   slaap: number | null;
   stress: number | null;
   stappen: number | null;
+  schouders?: number | null;
+  borstLats?: number | null;
+  armLinks?: number | null;
+  armRechts?: number | null;
+  beenLinks?: number | null;
+  beenRechts?: number | null;
+  kuitLinks?: number | null;
+  kuitRechts?: number | null;
+  heupBil?: number | null;
 }
 
 interface ProgressieWeek {
   weekNumber: number;
   days: ProgressieDay[];
+  requestedFields?: string[];
 }
 
 function useProgressieWeek(weekNumber: number | undefined) {
@@ -105,6 +115,15 @@ export default function DagboekPage() {
       heupomvang:      data.heupomvang,
       stappen:         data.stappen,
       manualKcal:      data.manualKcal > 0 ? String(data.manualKcal) : "",
+      schouders:       data.schouders,
+      borstLats:       data.borstLats,
+      armLinks:        data.armLinks,
+      armRechts:       data.armRechts,
+      beenLinks:       data.beenLinks,
+      beenRechts:      data.beenRechts,
+      kuitLinks:       data.kuitLinks,
+      kuitRechts:      data.kuitRechts,
+      heupBil:         data.heupBil,
     };
 
     const payload = {
@@ -230,6 +249,7 @@ export default function DagboekPage() {
                   targetKcal={nutritionTarget?.kcal ?? null}
                   onSave={(data) => handleSave(day.id, data)}
                   isSaving={createEntry.isPending || updateEntry.isPending}
+                  requestedFields={progressieWeek?.requestedFields || []}
                 />
               </TabsContent>
             );
@@ -253,7 +273,7 @@ function parseEntry(entry: any) {
   return { metrics, notes };
 }
 
-function DagForm({ day, weekNumber, entry, sheetDay, targetKcal, onSave, isSaving }: {
+function DagForm({ day, weekNumber, entry, sheetDay, targetKcal, onSave, isSaving, requestedFields }: {
   day: { id: string; label: string; nl: string };
   weekNumber: number;
   entry?: any;
@@ -261,6 +281,7 @@ function DagForm({ day, weekNumber, entry, sheetDay, targetKcal, onSave, isSavin
   targetKcal: number | null;
   onSave: (data: any) => void;
   isSaving: boolean;
+  requestedFields: string[];
 }) {
   const buildForm = () => {
     const { metrics, notes } = parseEntry(entry);
@@ -273,6 +294,15 @@ function DagForm({ day, weekNumber, entry, sheetDay, targetKcal, onSave, isSavin
       slaapUren:       metrics.slaapUren                  || "",
       stressNiveau:    metrics.stressNiveau               || "",
       stappen:         metrics.stappen                    || "",
+      schouders:       metrics.schouders                  || "",
+      borstLats:       metrics.borstLats                  || "",
+      armLinks:        metrics.armLinks                   || "",
+      armRechts:       metrics.armRechts                  || "",
+      beenLinks:       metrics.beenLinks                  || "",
+      beenRechts:      metrics.beenRechts                 || "",
+      kuitLinks:       metrics.kuitLinks                  || "",
+      kuitRechts:      metrics.kuitRechts                 || "",
+      heupBil:         metrics.heupBil                    || "",
       notes,
     };
   };
@@ -313,6 +343,226 @@ function DagForm({ day, weekNumber, entry, sheetDay, targetKcal, onSave, isSavin
   const ph = (val: number | null | undefined, suffix = "") =>
     val !== null && val !== undefined ? `${val}${suffix} (sheet)` : "";
 
+  const fields = requestedFields.length > 0 ? requestedFields : [
+    "gewicht", "kcal", "buikomvang", "heupomvang",
+    "krachtniveau", "energieniveau", "slaap", "stress", "stappen"
+  ];
+
+  const isShown = (fieldName: string) => fields.includes(fieldName);
+
+  const shownLichaamsmaten = [
+    isShown("gewicht") && (
+      <div key="gewicht" className="space-y-1.5">
+        <Label className="text-xs font-semibold">Gewicht (kg)</Label>
+        <Input
+          type="number" inputMode="decimal" name="lichaamsgewicht"
+          value={formData.lichaamsgewicht} onChange={handleChange}
+          className="h-12 text-center font-bold"
+          placeholder={ph(sheetDay?.gewicht, " kg") || "0.0"}
+        />
+      </div>
+    ),
+    isShown("buikomvang") && (
+      <div key="buik" className="space-y-1.5">
+        <Label className="text-xs font-semibold">Buikomvang (cm)</Label>
+        <Input
+          type="number" inputMode="decimal" name="buikomvang"
+          value={formData.buikomvang} onChange={handleChange}
+          className="h-12 text-center font-bold"
+          placeholder={ph(sheetDay?.buikomvang, " cm") || "0"}
+        />
+      </div>
+    ),
+    isShown("heupomvang") && (
+      <div key="heup" className="space-y-1.5">
+        <Label className="text-xs font-semibold">Heupomvang (cm)</Label>
+        <Input
+          type="number" inputMode="decimal" name="heupomvang"
+          value={formData.heupomvang} onChange={handleChange}
+          className="h-12 text-center font-bold"
+          placeholder={ph(sheetDay?.heupomvang, " cm") || "0"}
+        />
+      </div>
+    )
+  ].filter(Boolean);
+
+  const lmColClass = 
+    shownLichaamsmaten.length === 3 ? "grid-cols-3" :
+    shownLichaamsmaten.length === 2 ? "grid-cols-2" :
+    "grid-cols-1";
+
+  const shownWellness1 = [
+    isShown("energieniveau") && (
+      <div key="energie" className="space-y-1.5">
+        <Label className="text-xs font-semibold">Energieniveau (0-10)</Label>
+        <Input
+          type="number" inputMode="numeric" name="energieNiveau" min="0" max="10"
+          value={formData.energieNiveau} onChange={handleChange}
+          className="h-12 text-center font-bold text-lg"
+          placeholder={ph(sheetDay?.energieniveau) || "0-10"}
+        />
+      </div>
+    ),
+    isShown("krachtniveau") && (
+      <div key="kracht" className="space-y-1.5">
+        <Label className="text-xs font-semibold">Krachtniveau (0-10)</Label>
+        <Input
+          type="number" inputMode="numeric" name="krachtniveau" min="0" max="10"
+          value={formData.krachtniveau} onChange={handleChange}
+          className="h-12 text-center font-bold text-lg"
+          placeholder={ph(sheetDay?.krachtniveau) || "0-10"}
+        />
+      </div>
+    )
+  ].filter(Boolean);
+
+  const shownWellness2 = [
+    isShown("slaap") && (
+      <div key="slaap" className="space-y-1.5">
+        <Label className="text-xs font-semibold">Slaap (uren)</Label>
+        <Input
+          type="number" inputMode="decimal" name="slaapUren"
+          value={formData.slaapUren} onChange={handleChange}
+          className="h-12 text-center font-bold"
+          placeholder={ph(sheetDay?.slaap, "u") || "8"}
+        />
+      </div>
+    ),
+    isShown("stress") && (
+      <div key="stress" className="space-y-1.5">
+        <Label className="text-xs font-semibold">Stress (0-10)</Label>
+        <Input
+          type="number" inputMode="numeric" name="stressNiveau" min="0" max="10"
+          value={formData.stressNiveau} onChange={handleChange}
+          className="h-12 text-center font-bold"
+          placeholder={ph(sheetDay?.stress) || "0-10"}
+        />
+      </div>
+    ),
+    isShown("stappen") && (
+      <div key="stappen" className="space-y-1.5">
+        <Label className="text-xs font-semibold">Stappen</Label>
+        <Input
+          type="number" inputMode="numeric" name="stappen"
+          value={formData.stappen} onChange={handleChange}
+          className="h-12 text-center font-bold"
+          placeholder={ph(sheetDay?.stappen) || "0"}
+        />
+      </div>
+    )
+  ].filter(Boolean);
+
+  const showWellnessSection = shownWellness1.length > 0 || shownWellness2.length > 0;
+
+  const shownCircumference = [
+    isShown("schouders") && (
+      <div key="schouders" className="space-y-1.5">
+        <Label className="text-xs font-semibold">Schouders (cm)</Label>
+        <Input
+          type="number" inputMode="decimal" name="schouders"
+          value={formData.schouders} onChange={handleChange}
+          className="h-12 text-center font-bold"
+          placeholder={ph(sheetDay?.schouders, " cm") || "0"}
+        />
+      </div>
+    ),
+    isShown("borstLats") && (
+      <div key="borstLats" className="space-y-1.5">
+        <Label className="text-xs font-semibold">Borst/Lats (cm)</Label>
+        <Input
+          type="number" inputMode="decimal" name="borstLats"
+          value={formData.borstLats} onChange={handleChange}
+          className="h-12 text-center font-bold"
+          placeholder={ph(sheetDay?.borstLats, " cm") || "0"}
+        />
+      </div>
+    ),
+    isShown("armLinks") && (
+      <div key="armLinks" className="space-y-1.5">
+        <Label className="text-xs font-semibold">Arm links (cm)</Label>
+        <Input
+          type="number" inputMode="decimal" name="armLinks"
+          value={formData.armLinks} onChange={handleChange}
+          className="h-12 text-center font-bold"
+          placeholder={ph(sheetDay?.armLinks, " cm") || "0"}
+        />
+      </div>
+    ),
+    isShown("armRechts") && (
+      <div key="armRechts" className="space-y-1.5">
+        <Label className="text-xs font-semibold">Arm rechts (cm)</Label>
+        <Input
+          type="number" inputMode="decimal" name="armRechts"
+          value={formData.armRechts} onChange={handleChange}
+          className="h-12 text-center font-bold"
+          placeholder={ph(sheetDay?.armRechts, " cm") || "0"}
+        />
+      </div>
+    ),
+    isShown("beenLinks") && (
+      <div key="beenLinks" className="space-y-1.5">
+        <Label className="text-xs font-semibold">Been links (cm)</Label>
+        <Input
+          type="number" inputMode="decimal" name="beenLinks"
+          value={formData.beenLinks} onChange={handleChange}
+          className="h-12 text-center font-bold"
+          placeholder={ph(sheetDay?.beenLinks, " cm") || "0"}
+        />
+      </div>
+    ),
+    isShown("beenRechts") && (
+      <div key="beenRechts" className="space-y-1.5">
+        <Label className="text-xs font-semibold">Been rechts (cm)</Label>
+        <Input
+          type="number" inputMode="decimal" name="beenRechts"
+          value={formData.beenRechts} onChange={handleChange}
+          className="h-12 text-center font-bold"
+          placeholder={ph(sheetDay?.beenRechts, " cm") || "0"}
+        />
+      </div>
+    ),
+    isShown("kuitLinks") && (
+      <div key="kuitLinks" className="space-y-1.5">
+        <Label className="text-xs font-semibold">Kuit links (cm)</Label>
+        <Input
+          type="number" inputMode="decimal" name="kuitLinks"
+          value={formData.kuitLinks} onChange={handleChange}
+          className="h-12 text-center font-bold"
+          placeholder={ph(sheetDay?.kuitLinks, " cm") || "0"}
+        />
+      </div>
+    ),
+    isShown("kuitRechts") && (
+      <div key="kuitRechts" className="space-y-1.5">
+        <Label className="text-xs font-semibold">Kuit rechts (cm)</Label>
+        <Input
+          type="number" inputMode="decimal" name="kuitRechts"
+          value={formData.kuitRechts} onChange={handleChange}
+          className="h-12 text-center font-bold"
+          placeholder={ph(sheetDay?.kuitRechts, " cm") || "0"}
+        />
+      </div>
+    ),
+    isShown("heupBil") && (
+      <div key="heupBil" className="space-y-1.5">
+        <Label className="text-xs font-semibold">Heup/Bil (cm)</Label>
+        <Input
+          type="number" inputMode="decimal" name="heupBil"
+          value={formData.heupBil} onChange={handleChange}
+          className="h-12 text-center font-bold"
+          placeholder={ph(sheetDay?.heupBil, " cm") || "0"}
+        />
+      </div>
+    )
+  ].filter(Boolean);
+
+  const showCircumferenceSection = shownCircumference.length > 0;
+
+  const circColClass = 
+    shownCircumference.length >= 3 ? "grid-cols-3" :
+    shownCircumference.length === 2 ? "grid-cols-2" :
+    "grid-cols-1";
+
   return (
     <div className="bg-card border border-border rounded-xl p-5 shadow-sm space-y-5">
 
@@ -335,107 +585,58 @@ function DagForm({ day, weekNumber, entry, sheetDay, targetKcal, onSave, isSavin
       )}
 
       {/* Sectie: Lichaamsmaten */}
-      <div>
-        <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Lichaamsmaten</p>
-        <div className="grid grid-cols-3 gap-3">
-          <div className="space-y-1.5">
-            <Label className="text-xs font-semibold">Gewicht (kg)</Label>
-            <Input
-              type="number" inputMode="decimal" name="lichaamsgewicht"
-              value={formData.lichaamsgewicht} onChange={handleChange}
-              className="h-12 text-center font-bold"
-              placeholder={ph(sheetDay?.gewicht, " kg") || "0.0"}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs font-semibold">Buikomvang (cm)</Label>
-            <Input
-              type="number" inputMode="decimal" name="buikomvang"
-              value={formData.buikomvang} onChange={handleChange}
-              className="h-12 text-center font-bold"
-              placeholder={ph(sheetDay?.buikomvang, " cm") || "0"}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs font-semibold">Heupomvang (cm)</Label>
-            <Input
-              type="number" inputMode="decimal" name="heupomvang"
-              value={formData.heupomvang} onChange={handleChange}
-              className="h-12 text-center font-bold"
-              placeholder={ph(sheetDay?.heupomvang, " cm") || "0"}
-            />
+      {shownLichaamsmaten.length > 0 && (
+        <div>
+          <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Lichaamsmaten</p>
+          <div className={`grid ${lmColClass} gap-3`}>
+            {shownLichaamsmaten}
           </div>
         </div>
-      </div>
+      )}
 
       {/* Sectie: Voeding */}
-      <div>
-        <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">Voeding</p>
-        <FoodTracker
-          key={`food-${day.id}-${entry?.id ?? 'new'}`}
-          weekNumber={weekNumber}
-          day={day.id}
-          dayLabel={day.nl}
-          sheetKcal={sheetDay?.kcal ?? null}
-          targetKcal={targetKcal}
-          savedManualKcal={currentManualKcal}
-          onManualKcalChange={setCurrentManualKcal}
-        />
-      </div>
+      {isShown("kcal") && (
+        <div>
+          <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">Voeding</p>
+          <FoodTracker
+            key={`food-${day.id}-${entry?.id ?? 'new'}`}
+            weekNumber={weekNumber}
+            day={day.id}
+            dayLabel={day.nl}
+            sheetKcal={sheetDay?.kcal ?? null}
+            targetKcal={targetKcal}
+            savedManualKcal={currentManualKcal}
+            onManualKcalChange={setCurrentManualKcal}
+          />
+        </div>
+      )}
 
       {/* Sectie: Welzijn */}
-      <div>
-        <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Welzijn &amp; Prestatie</p>
-        <div className="grid grid-cols-2 gap-3 mb-3">
-          <div className="space-y-1.5">
-            <Label className="text-xs font-semibold">Energieniveau (0-10)</Label>
-            <Input
-              type="number" inputMode="numeric" name="energieNiveau" min="0" max="10"
-              value={formData.energieNiveau} onChange={handleChange}
-              className="h-12 text-center font-bold text-lg"
-              placeholder={ph(sheetDay?.energieniveau) || "0-10"}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs font-semibold">Krachtniveau (0-10)</Label>
-            <Input
-              type="number" inputMode="numeric" name="krachtniveau" min="0" max="10"
-              value={formData.krachtniveau} onChange={handleChange}
-              className="h-12 text-center font-bold text-lg"
-              placeholder={ph(sheetDay?.krachtniveau) || "0-10"}
-            />
+      {showWellnessSection && (
+        <div>
+          <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Welzijn &amp; Prestatie</p>
+          {shownWellness1.length > 0 && (
+            <div className={`grid ${shownWellness1.length === 2 ? 'grid-cols-2' : 'grid-cols-1'} gap-3 mb-3`}>
+              {shownWellness1}
+            </div>
+          )}
+          {shownWellness2.length > 0 && (
+            <div className={`grid ${shownWellness2.length === 3 ? 'grid-cols-3' : shownWellness2.length === 2 ? 'grid-cols-2' : 'grid-cols-1'} gap-3`}>
+              {shownWellness2}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Sectie: Omvangsmaten */}
+      {showCircumferenceSection && (
+        <div>
+          <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Omvangsmaten</p>
+          <div className={`grid ${circColClass} gap-3`}>
+            {shownCircumference}
           </div>
         </div>
-        <div className="grid grid-cols-3 gap-3">
-          <div className="space-y-1.5">
-            <Label className="text-xs font-semibold">Slaap (uren)</Label>
-            <Input
-              type="number" inputMode="decimal" name="slaapUren"
-              value={formData.slaapUren} onChange={handleChange}
-              className="h-12 text-center font-bold"
-              placeholder={ph(sheetDay?.slaap, "u") || "8"}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs font-semibold">Stress (0-10)</Label>
-            <Input
-              type="number" inputMode="numeric" name="stressNiveau" min="0" max="10"
-              value={formData.stressNiveau} onChange={handleChange}
-              className="h-12 text-center font-bold"
-              placeholder={ph(sheetDay?.stress) || "0-10"}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs font-semibold">Stappen</Label>
-            <Input
-              type="number" inputMode="numeric" name="stappen"
-              value={formData.stappen} onChange={handleChange}
-              className="h-12 text-center font-bold"
-              placeholder={ph(sheetDay?.stappen) || "0"}
-            />
-          </div>
-        </div>
-      </div>
+      )}
 
       {/* Notities */}
       <div className="space-y-1.5">
