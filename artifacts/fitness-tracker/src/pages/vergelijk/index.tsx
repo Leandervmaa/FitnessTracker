@@ -310,8 +310,8 @@ export default function VergelijkPage() {
                     <div key={eIdx} className="px-4 py-4 hover:bg-secondary/10 transition-colors">
                       <div className="text-sm font-bold mb-3 text-foreground">{ex.name}</div>
                       
-                      <div className="grid grid-cols-[auto_1fr_1fr_auto] gap-2 items-center text-xs mb-1 px-1 text-muted-foreground font-semibold">
-                        <div className="w-4 text-center">#</div>
+                      <div className="grid grid-cols-[1.5rem_6.5rem_6.5rem_1fr] gap-2 items-center text-xs mb-1 px-1 text-muted-foreground font-semibold">
+                        <div className="text-center">#</div>
                         <div className="truncate pr-1">Wk {weekA}</div>
                         <div className="truncate pr-1">Wk {weekB}</div>
                         <div className="text-right">Diff</div>
@@ -319,9 +319,9 @@ export default function VergelijkPage() {
 
                       <div className="space-y-0.5">
                         {ex.sets.map((set: any, sIdx: number) => (
-                          <div key={sIdx} className="grid grid-cols-[auto_1fr_1fr_auto] gap-2 items-center py-1.5 border-b border-border/40 last:border-0 text-sm">
+                          <div key={sIdx} className="grid grid-cols-[1.5rem_6.5rem_6.5rem_1fr] gap-2 items-center py-1.5 border-b border-border/40 last:border-0 text-sm">
                             {/* Set # */}
-                            <div className="w-4 text-center font-bold text-muted-foreground">{sIdx + 1}</div>
+                            <div className="text-center font-bold text-muted-foreground">{sIdx + 1}</div>
                             
                             {/* Week A */}
                             <div className="grid grid-cols-[3.25rem_0.75rem_1.75rem] items-center text-sm">
