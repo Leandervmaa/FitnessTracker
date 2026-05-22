@@ -64,4 +64,14 @@ router.get("/events", (req: Request, res: Response) => {
   });
 });
 
+router.get("/trigger", async (req, res) => {
+  try {
+    const { syncAllLogs } = await import("../services/syncService.js");
+    await syncAllLogs();
+    res.json({ success: true, message: "Sync triggered" });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 export default router;
