@@ -101,35 +101,69 @@ export default function VergelijkPage() {
     { query: { queryKey: getGetWorkoutsForWeekQueryKey(weekB), enabled: !!weekB } }
   );
 
-  // Aggregate logs by workout (using workoutsA as the structure baseline)
+  // Aggregate logs by workout (full outer join on workouts from Week A and Week B)
   const workoutsCompare = useMemo(() => {
-    // If we don't have workouts for week A, we can't build the structure easily.
-    // Ideally we should use whichever week has workouts.
-    const baseWorkouts = workoutsA.length > 0 ? workoutsA : workoutsB;
-    
-    return baseWorkouts.map((workout: any) => {
-      // Find the corresponding workout in week B (match by name or dayLabel, e.g. "Upper A")
-      const matchingWorkoutB = workoutsB.find((w: any) => w.name === workout.name || w.dayLabel === workout.dayLabel);
-      
-      const exercises = (workout.exercises || []).map((ex: any) => {
-        // Find logA: since ex is from baseWorkouts (which is likely week A), we can match by id if baseWorkouts === workoutsA
-        // But to be safe, let's match by exercise name within the logs of the correct workout
-        const logA = logsA.find((l: any) => l.exerciseId === ex.id || (workoutsA.some((wa: any) => wa.id === l.workoutId && wa.exercises?.some((e: any) => e.id === l.exerciseId && e.name === ex.name))));
-        
-        // Find logB: exercise ID changes per week (w14-day1-ex1 vs w15-day1-ex1)
-        // We find the exercise in matchingWorkoutB with the same name
-        const exB = (matchingWorkoutB as any)?.exercises?.find((e: any) => e.name === ex.name);
-        const logB = exB ? logsB.find((l: any) => l.exerciseId === exB.id) : null;
+    const pairedWorkouts: Array<{ workoutA: any; workoutB: any }> = [];
+    const matchedBIds = new Set<string>();
+
+    workoutsA.forEach((wA: any) => {
+      const wB = workoutsB.find((wb: any) => wb.name === wA.name || wb.dayLabel === wA.dayLabel);
+      if (wB) {
+        matchedBIds.add(wB.id);
+      }
+      pairedWorkouts.push({ workoutA: wA, workoutB: wB });
+    });
+
+    workoutsB.forEach((wB: any) => {
+      if (!matchedBIds.has(wB.id)) {
+        pairedWorkouts.push({ workoutA: null, workoutB: wB });
+      }
+    });
+
+    return pairedWorkouts.map(({ workoutA, workoutB }) => {
+      const exercisesA = workoutA?.exercises || [];
+      const exercisesB = workoutB?.exercises || [];
+
+      // Get the union of all exercise names in order.
+      const allExerciseNames: string[] = [];
+      exercisesA.forEach((ex: any) => {
+        if (!allExerciseNames.includes(ex.name)) {
+          allExerciseNames.push(ex.name);
+        }
+      });
+      exercisesB.forEach((ex: any) => {
+        if (!allExerciseNames.includes(ex.name)) {
+          allExerciseNames.push(ex.name);
+        }
+      });
+
+      const exercises = allExerciseNames.map((exerciseName) => {
+        const exA = exercisesA.find((e: any) => e.name === exerciseName);
+        const exB = exercisesB.find((e: any) => e.name === exerciseName);
+
+        const logA = exA
+          ? logsA.find((l: any) => 
+              l.exerciseId === exA.id || 
+              (workoutsA.some((wa: any) => wa.id === l.workoutId && wa.exercises?.some((e: any) => e.id === l.exerciseId && e.name === exerciseName)))
+            )
+          : null;
+
+        const logB = exB
+          ? logsB.find((l: any) => 
+              l.exerciseId === exB.id || 
+              (workoutsB.some((wb: any) => wb.id === l.workoutId && wb.exercises?.some((e: any) => e.id === l.exerciseId && e.name === exerciseName)))
+            )
+          : null;
 
         const parseSetStr = (str: string | null | undefined) => str ? str.split(',').map(s => s.trim()).filter(s => s !== "") : [];
-        
+
         const weightsA = parseSetStr(logA?.weight);
         const repsA = parseSetStr(logA?.reps);
         const weightsB = parseSetStr(logB?.weight);
         const repsB = parseSetStr(logB?.reps);
-        
+
         const maxSets = Math.max(weightsA.length, weightsB.length, 1);
-        
+
         const sets = Array.from({ length: maxSets }).map((_, i) => ({
           setNum: i + 1,
           weightA: weightsA[i] ? parseFloat(weightsA[i]) : null,
@@ -139,15 +173,17 @@ export default function VergelijkPage() {
         }));
 
         return {
-          name: ex.name,
+          name: exerciseName,
           sets
         };
       });
 
       return {
-        workoutName: workout.name,
-        dayLabel: workout.dayLabel,
-        exercises: exercises.filter((e: any) => e.sets.some((s: any) => s.weightA !== null || s.weightB !== null)) // only show if logged
+        workoutName: workoutA?.name || workoutB?.name || "",
+        dayLabel: workoutA?.dayLabel || workoutB?.dayLabel || "",
+        exercises: exercises.filter((e: any) => 
+          e.sets.some((s: any) => s.weightA !== null || s.weightB !== null || s.repsA !== null || s.repsB !== null)
+        )
       };
     }).filter((w: any) => w.exercises.length > 0);
   }, [workoutsA, workoutsB, logsA, logsB]);
@@ -288,17 +324,17 @@ export default function VergelijkPage() {
                             <div className="w-4 text-center font-bold text-muted-foreground">{sIdx + 1}</div>
                             
                             {/* Week A */}
-                            <div className="flex items-center gap-0.5">
-                              <span className="font-semibold tabular-nums">{set.weightA !== null ? set.weightA : "-"}</span>
-                              <span className="text-muted-foreground text-xs mx-0.5">×</span>
-                              <span className="font-semibold tabular-nums">{set.repsA || "-"}</span>
+                            <div className="grid grid-cols-[3.25rem_0.75rem_1.75rem] items-center text-sm">
+                              <span className="font-semibold tabular-nums text-right">{set.weightA !== null ? set.weightA : "-"}</span>
+                              <span className="text-muted-foreground text-xs text-center">×</span>
+                              <span className="font-semibold tabular-nums text-left">{set.repsA || "-"}</span>
                             </div>
                             
                             {/* Week B */}
-                            <div className="flex items-center gap-0.5">
-                              <span className="font-semibold tabular-nums">{set.weightB !== null ? set.weightB : "-"}</span>
-                              <span className="text-muted-foreground text-xs mx-0.5">×</span>
-                              <span className="font-semibold tabular-nums">{set.repsB || "-"}</span>
+                            <div className="grid grid-cols-[3.25rem_0.75rem_1.75rem] items-center text-sm">
+                              <span className="font-semibold tabular-nums text-right">{set.weightB !== null ? set.weightB : "-"}</span>
+                              <span className="text-muted-foreground text-xs text-center">×</span>
+                              <span className="font-semibold tabular-nums text-left">{set.repsB || "-"}</span>
                             </div>
                             
                             {/* Diff */}
