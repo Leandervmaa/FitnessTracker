@@ -59,7 +59,7 @@ export default function TrainingDetail() {
       const prevWeights = exercise?.previousWeekWeight ? exercise.previousWeekWeight.toString().split(',').map(s => s.trim()) : [];
       const prevReps = exercise?.previousWeekReps ? exercise.previousWeekReps.toString().split(',').map(s => s.trim()) : [];
       setWeights(Array(numSets).fill("").map((_, i) => prevWeights[i] || exercise?.prescribedWeight?.toString().split(',')[i]?.trim() || ""));
-      setRepsList(Array(numSets).fill("").map((_, i) => prevReps[i] || exercise?.reps?.split(',')[i]?.trim() || ""));
+      setRepsList(Array(numSets).fill("").map((_, i) => prevReps[i] || ""));
       setNotes("");
     }
   }, [currentLog, exercise]);
@@ -168,10 +168,12 @@ export default function TrainingDetail() {
           <ChevronLeft className="h-6 w-6" />
         </Button>
         <div className="flex-1">
-          <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{workout.name}</div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-sm font-bold text-foreground">Oefening {currentStep + 1} van {exercises.length}</h1>
+          <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">
+            Oefening {currentStep + 1} van {exercises.length}
           </div>
+          <h2 className="text-2xl font-black text-foreground">
+            {exercise.name} {exercise.reps ? <span className="text-muted-foreground text-lg font-bold">({exercise.reps})</span> : ""}
+          </h2>
         </div>
       </header>
 
@@ -241,7 +243,6 @@ export default function TrainingDetail() {
                   className="h-14 text-xl font-bold px-4 bg-card"
                   placeholder={
                     exercise.previousWeekReps?.toString().split(',')[idx]?.trim() || 
-                    exercise.reps?.toString().split(',')[idx]?.trim() || 
                     "0"
                   }
                 />

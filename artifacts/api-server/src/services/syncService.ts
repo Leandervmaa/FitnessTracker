@@ -43,25 +43,33 @@ export async function syncLogsFromExcel(): Promise<void> {
 
           if (!colA && !colB) continue;
 
-          if (/^week\s+\d+$/i.test(colA) && (colB === "" || /^(oefening|datum)/i.test(colB))) {
             const match = colA.match(/\d+/);
             if (match) {
               currentWeek = parseInt(match[0], 10);
               let werkSets = -1;
               let reps = -1;
+              const set1Indices: number[] = [];
               for (let i = 0; i < row.length; i++) {
                 const c = toStr(row[i])?.toLowerCase() || "";
                 if (/^werk\s*sets?$/.test(c)) werkSets = i;
                 if (c === "reps") reps = i;
+                if (c === "set 1") set1Indices.push(i);
               }
-              if (werkSets !== -1 && reps !== -1) {
-                colMap = { werkSets, reps, setStart: 3, setEnd: werkSets - 1 };
+              const setStart = 3;
+              const setEnd = werkSets !== -1 ? werkSets - 1 : 7;
+              let repsSetStart = -1;
+              let repsSetEnd = -1;
+              
+              if (set1Indices.length >= 2) {
+                repsSetStart = set1Indices[1];
+                repsSetEnd = repsSetStart + (setEnd - setStart);
               } else {
-                colMap = { werkSets: 8, reps: 9, setStart: 3, setEnd: 7 };
+                repsSetStart = setStart + 10;
+                repsSetEnd = setEnd + 10;
               }
+              colMap = { werkSets: werkSets !== -1 ? werkSets : 8, reps: reps !== -1 ? reps : 9, setStart, setEnd, repsSetStart, repsSetEnd } as any;
             }
             continue;
-          }
 
           if (currentWeek === null) continue;
 
@@ -121,19 +129,39 @@ export async function syncLogsFromExcel(): Promise<void> {
               )
             );
 
-          if (existing.length === 0) {
-            const repsVal = colMap.reps < row.length ? toStr(row[colMap.reps]) || "0" : "0";
-            const repsArr = Array(weights.length).fill(repsVal);
+          const repsArr: string[] = [];
+          for (let c = colMap.repsSetStart; c <= colMap.repsSetEnd; c++) {
+            if (c < row.length) {
+              const val = toStr(row[c]);
+              // Ignore values that look like rep ranges (e.g. "10-15")
+              if (val && !val.includes("-")) {
+                repsArr.push(val);
+              } else {
+                repsArr.push("");
+              }
+            } else {
+              repsArr.push("");
+            }
+          }
+          // Truncate to weights length
+          const finalReps = repsArr.slice(0, weights.length).map(r => r || "0").join(", ");
 
+          if (existing.length === 0) {
             await db.insert(exerciseLogsTable).values({
               exerciseId: exerciseDef.id,
               workoutId: workoutDef.id,
               weekNumber: weekNum,
               sets: exerciseDef.sets,
-              reps: repsArr.join(", "),
+              reps: finalReps,
               weight: weights.join(", "),
               notes: "Geïmporteerd uit Excel bestand"
             });
+            importCount++;
+          } else if (existing[0].notes?.includes("Geïmporteerd") && existing[0].reps?.includes("-")) {
+            // Fix previously imported records that incorrectly had rep ranges
+            await db.update(exerciseLogsTable)
+              .set({ reps: finalReps })
+              .where(eq(exerciseLogsTable.id, existing[0].id));
             importCount++;
           }
         }
@@ -159,14 +187,20 @@ export async function syncLogsFromSheets(): Promise<void> {
 
       let headerRowIndex = -1;
       let setCols: number[] = [];
+      let repsSetCols: number[] = [];
       let repsCol = -1;
 
       for (let i = 0; i < Math.min(10, data.length); i++) {
         const row = data[i].map((c) => c?.toLowerCase() || "");
         if (row.some(c => c.includes("set"))) {
           headerRowIndex = i;
+          let set1Count = 0;
           for (let j = 0; j < row.length; j++) {
-            if (row[j].match(/set\s*\d/)) setCols.push(j);
+            if (row[j].match(/set\s*1/)) set1Count++;
+            if (row[j].match(/set\s*\d/)) {
+              if (set1Count <= 1) setCols.push(j);
+              else repsSetCols.push(j);
+            }
             if (row[j] === "reps") repsCol = j;
           }
           break;
@@ -174,6 +208,7 @@ export async function syncLogsFromSheets(): Promise<void> {
       }
 
       if (setCols.length === 0) setCols = [3, 4, 5, 6, 7];
+      if (repsSetCols.length === 0) repsSetCols = setCols.map(c => c + 10);
 
       const weekProgram = getWeek(weekNum);
       if (!weekProgram) continue;
@@ -238,20 +273,38 @@ export async function syncLogsFromSheets(): Promise<void> {
                 )
               );
 
-            if (existing.length === 0) {
-              const repsVal = repsCol >= 0 && repsCol < row.length ? toStr(row[repsCol]) || "0" : "0";
-              const repsArr = Array(weights.length).fill(repsVal);
+            const repsArr: string[] = [];
+            for (let idx = 0; idx < weights.length; idx++) {
+              const repColIdx = repsSetCols[idx];
+              if (repColIdx !== undefined && repColIdx < row.length) {
+                const val = toStr(row[repColIdx]);
+                if (val && !val.includes("-")) {
+                  repsArr.push(val);
+                } else {
+                  repsArr.push("0");
+                }
+              } else {
+                repsArr.push("0");
+              }
+            }
+            const finalReps = repsArr.join(", ");
 
+            if (existing.length === 0) {
               await db.insert(exerciseLogsTable).values({
                 exerciseId: exerciseDef.id,
                 workoutId: workoutDef.id,
                 weekNumber: weekNum,
                 sets: exerciseDef.sets,
-                reps: repsArr.join(", "),
+                reps: finalReps,
                 weight: weights.join(", "),
                 notes: "Geïmporteerd uit spreadsheet"
               });
               importCount++;
+            } else if (existing[0].notes?.includes("Geïmporteerd") && existing[0].reps?.includes("-")) {
+               await db.update(exerciseLogsTable)
+                 .set({ reps: finalReps })
+                 .where(eq(exerciseLogsTable.id, existing[0].id));
+               importCount++;
             }
           }
         }

@@ -301,8 +301,14 @@ export default function VergelijkPage() {
                             </div>
                             
                             {/* Diff */}
-                            <div className="flex justify-end">
+                            <div className="flex flex-col justify-end items-end gap-1">
                               <DiffText a={set.weightA} b={set.weightB} unit="kg" decimals={1} />
+                              <DiffText 
+                                a={set.repsA ? parseInt(set.repsA) : null} 
+                                b={set.repsB ? parseInt(set.repsB) : null} 
+                                unit=" reps" 
+                                decimals={0} 
+                              />
                             </div>
                           </div>
                         ))}
