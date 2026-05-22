@@ -157,8 +157,8 @@ export async function syncLogsFromExcel(): Promise<void> {
               notes: "Geïmporteerd uit Excel bestand"
             });
             importCount++;
-          } else if (existing[0].notes?.includes("Geïmporteerd") && existing[0].reps?.includes("-")) {
-            // Fix previously imported records that incorrectly had rep ranges
+          } else if (existing[0].notes?.includes("Geïmporteerd") && existing[0].reps !== finalReps) {
+            // Fix previously imported records that had wrong reps
             await db.update(exerciseLogsTable)
               .set({ reps: finalReps })
               .where(eq(exerciseLogsTable.id, existing[0].id));
@@ -300,7 +300,7 @@ export async function syncLogsFromSheets(): Promise<void> {
                 notes: "Geïmporteerd uit spreadsheet"
               });
               importCount++;
-            } else if (existing[0].notes?.includes("Geïmporteerd") && existing[0].reps?.includes("-")) {
+            } else if (existing[0].notes?.includes("Geïmporteerd") && existing[0].reps !== finalReps) {
                await db.update(exerciseLogsTable)
                  .set({ reps: finalReps })
                  .where(eq(exerciseLogsTable.id, existing[0].id));

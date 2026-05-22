@@ -187,7 +187,7 @@ export default function VergelijkPage() {
 
       {/* Main container allowing horizontal scroll on mobile, full width on desktop */}
       <div className="flex-1 w-full overflow-x-auto">
-        <div className="min-w-[700px] w-full max-w-7xl mx-auto p-4 md:p-6 flex flex-col gap-6">
+        <div className="w-full max-w-7xl mx-auto p-4 md:p-6 flex flex-col gap-6">
           
           {/* Header row: Selectors */}
           <div className="grid grid-cols-3 gap-4 sticky top-0 bg-background/95 pb-2 z-10 border-b border-border pt-2">
