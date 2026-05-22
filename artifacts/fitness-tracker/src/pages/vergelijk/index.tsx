@@ -101,45 +101,56 @@ export default function VergelijkPage() {
     { query: { queryKey: getGetWorkoutsForWeekQueryKey(weekB), enabled: !!weekB } }
   );
 
-  // Map to get exercise names
-  const exerciseNames = useMemo(() => {
-    const map = new Map<string, string>();
-    workoutsA.forEach((w: any) => w.exercises?.forEach((e: any) => map.set(e.id, e.name)));
-    workoutsB.forEach((w: any) => w.exercises?.forEach((e: any) => map.set(e.id, e.name)));
-    return map;
-  }, [workoutsA, workoutsB]);
+  // Aggregate logs by workout (using workoutsA as the structure baseline)
+  const workoutsCompare = useMemo(() => {
+    // If we don't have workouts for week A, we can't build the structure easily.
+    // Ideally we should use whichever week has workouts.
+    const baseWorkouts = workoutsA.length > 0 ? workoutsA : workoutsB;
+    
+    return baseWorkouts.map((workout: any) => {
+      // Find the corresponding workout in week B (match by name or dayLabel, e.g. "Upper A")
+      const matchingWorkoutB = workoutsB.find((w: any) => w.name === workout.name || w.dayLabel === workout.dayLabel);
+      
+      const exercises = (workout.exercises || []).map((ex: any) => {
+        // Find logA: since ex is from baseWorkouts (which is likely week A), we can match by id if baseWorkouts === workoutsA
+        // But to be safe, let's match by exercise name within the logs of the correct workout
+        const logA = logsA.find((l: any) => l.exerciseId === ex.id || (workoutsA.some((wa: any) => wa.id === l.workoutId && wa.exercises?.some((e: any) => e.id === l.exerciseId && e.name === ex.name))));
+        
+        // Find logB: exercise ID changes per week (w14-day1-ex1 vs w15-day1-ex1)
+        // We find the exercise in matchingWorkoutB with the same name
+        const exB = (matchingWorkoutB as any)?.exercises?.find((e: any) => e.name === ex.name);
+        const logB = exB ? logsB.find((l: any) => l.exerciseId === exB.id) : null;
 
-  // Aggregate max weights
-  const trainingCompare = useMemo(() => {
-    const maxWeightA = new Map<string, number>();
-    const maxWeightB = new Map<string, number>();
-    const allExIds = new Set<string>();
+        const parseSetStr = (str: string | null | undefined) => str ? str.split(',').map(s => s.trim()).filter(s => s !== "") : [];
+        
+        const weightsA = parseSetStr(logA?.weight);
+        const repsA = parseSetStr(logA?.reps);
+        const weightsB = parseSetStr(logB?.weight);
+        const repsB = parseSetStr(logB?.reps);
+        
+        const maxSets = Math.max(weightsA.length, weightsB.length, 1);
+        
+        const sets = Array.from({ length: maxSets }).map((_, i) => ({
+          setNum: i + 1,
+          weightA: weightsA[i] ? parseFloat(weightsA[i]) : null,
+          repsA: repsA[i] || null,
+          weightB: weightsB[i] ? parseFloat(weightsB[i]) : null,
+          repsB: repsB[i] || null,
+        }));
 
-    logsA.forEach(log => {
-      const weights = log.weight?.split(',').map(v => parseFloat(v)).filter(v => !isNaN(v)) || [];
-      const max = weights.length > 0 ? Math.max(...weights) : 0;
-      if (max > 0) {
-        maxWeightA.set(log.exerciseId, Math.max(max, maxWeightA.get(log.exerciseId) || 0));
-        allExIds.add(log.exerciseId);
-      }
-    });
+        return {
+          name: ex.name,
+          sets
+        };
+      });
 
-    logsB.forEach(log => {
-      const weights = log.weight?.split(',').map(v => parseFloat(v)).filter(v => !isNaN(v)) || [];
-      const max = weights.length > 0 ? Math.max(...weights) : 0;
-      if (max > 0) {
-        maxWeightB.set(log.exerciseId, Math.max(max, maxWeightB.get(log.exerciseId) || 0));
-        allExIds.add(log.exerciseId);
-      }
-    });
-
-    return Array.from(allExIds).map(id => ({
-      id,
-      name: exerciseNames.get(id) || "Onbekende Oefening",
-      weightA: maxWeightA.get(id) || null,
-      weightB: maxWeightB.get(id) || null,
-    })).sort((a, b) => a.name.localeCompare(b.name));
-  }, [logsA, logsB, exerciseNames]);
+      return {
+        workoutName: workout.name,
+        dayLabel: workout.dayLabel,
+        exercises: exercises.filter((e: any) => e.sets.some((s: any) => s.weightA !== null || s.weightB !== null)) // only show if logged
+      };
+    }).filter((w: any) => w.exercises.length > 0);
+  }, [workoutsA, workoutsB, logsA, logsB]);
 
   // Derived Dagboek averages
   const dagboekA = {
@@ -248,33 +259,60 @@ export default function VergelijkPage() {
             </div>
           </section>
 
-          {/* Section: Trainingen Max Weight */}
-          <section className="bg-card border border-border rounded-xl shadow-sm overflow-hidden mb-8">
-            <div className="bg-secondary/40 px-4 py-3 border-b border-border flex justify-between items-center">
-              <h2 className="font-bold uppercase tracking-wider text-sm">Zwaarste Gewicht per Oefening</h2>
-            </div>
-            {trainingCompare.length === 0 ? (
-              <div className="p-6 text-center text-muted-foreground text-sm">Geen gelogde oefeningen gevonden voor deze weken.</div>
-            ) : (
-              <div className="divide-y divide-border">
-                {trainingCompare.map(row => (
-                  <div key={row.id} className="grid grid-cols-3 gap-4 px-4 py-3 hover:bg-secondary/20 transition-colors items-center">
-                    <div>
-                      <div className="text-xs font-semibold text-muted-foreground mb-1 truncate pr-2" title={row.name}>{row.name}</div>
-                      <div className="text-sm font-bold">{row.weightA !== null ? `${row.weightA} kg` : <span className="text-muted-foreground font-normal">—</span>}</div>
+          {/* Section: Trainingen per Workout */}
+          {workoutsCompare.length === 0 ? (
+             <div className="bg-card border border-border rounded-xl p-6 text-center text-muted-foreground text-sm">Geen gelogde oefeningen gevonden voor deze weken.</div>
+          ) : (
+            workoutsCompare.map((workout: any, wIdx: number) => (
+              <section key={wIdx} className="bg-card border border-border rounded-xl shadow-sm overflow-hidden mb-6">
+                <div className="bg-primary/10 px-4 py-3 border-b border-primary/20 flex justify-between items-center">
+                  <h2 className="font-bold uppercase tracking-wider text-sm text-primary">{workout.dayLabel}: {workout.workoutName}</h2>
+                </div>
+                
+                <div className="divide-y divide-border">
+                  {workout.exercises.map((ex: any, eIdx: number) => (
+                    <div key={eIdx} className="px-4 py-4 hover:bg-secondary/10 transition-colors">
+                      <div className="text-sm font-bold mb-3 text-foreground">{ex.name}</div>
+                      
+                      <div className="space-y-2">
+                        {ex.sets.map((set: any, sIdx: number) => (
+                          <div key={sIdx} className="grid grid-cols-[auto_1fr_1fr_auto] md:grid-cols-3 gap-2 md:gap-4 items-center text-sm">
+                            {/* Mobile Layout Hack: Set number column */}
+                            <div className="text-xs font-semibold text-muted-foreground w-10 md:hidden">Set {set.setNum}</div>
+                            
+                            {/* Week A Set */}
+                            <div className="flex flex-col md:flex-row md:items-center gap-1">
+                              <span className="text-xs font-semibold text-muted-foreground hidden md:inline-block w-12">Set {set.setNum}:</span>
+                              {set.weightA !== null ? (
+                                <span className="font-medium bg-secondary px-2 py-0.5 rounded-md w-fit">
+                                  {set.weightA}kg <span className="text-muted-foreground text-xs mx-0.5">×</span> {set.repsA || "-"}
+                                </span>
+                              ) : <span className="text-muted-foreground italic text-xs">Niet gelogd</span>}
+                            </div>
+                            
+                            {/* Week B Set */}
+                            <div className="flex flex-col md:flex-row md:items-center gap-1 border-l border-border pl-2 md:border-none md:pl-0">
+                              <span className="text-xs font-semibold text-muted-foreground hidden md:inline-block w-12">Set {set.setNum}:</span>
+                              {set.weightB !== null ? (
+                                <span className="font-medium bg-secondary px-2 py-0.5 rounded-md w-fit">
+                                  {set.weightB}kg <span className="text-muted-foreground text-xs mx-0.5">×</span> {set.repsB || "-"}
+                                </span>
+                              ) : <span className="text-muted-foreground italic text-xs">Niet gelogd</span>}
+                            </div>
+                            
+                            {/* Diff */}
+                            <div className="flex justify-end">
+                              <DiffText a={set.weightA} b={set.weightB} unit="kg" decimals={1} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                    <div>
-                      <div className="text-xs font-semibold text-muted-foreground mb-1 invisible">_</div>
-                      <div className="text-sm font-bold">{row.weightB !== null ? `${row.weightB} kg` : <span className="text-muted-foreground font-normal">—</span>}</div>
-                    </div>
-                    <div>
-                      <DiffText a={row.weightA} b={row.weightB} unit="kg" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
+                  ))}
+                </div>
+              </section>
+            ))
+          )}
 
         </div>
       </div>
