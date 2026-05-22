@@ -255,21 +255,22 @@ function getSetWeightsList(row: string[], colMap: ColMap): string {
 function getSetRepsList(row: string[], colMap: ColMap): string {
   if (colMap.repsSetStart === -1) return "";
   const reps: string[] = [];
+  const numWeights = getSetWeightsList(row, colMap).split(',').filter(x => x.trim() !== "").length;
+  
   for (let c = colMap.repsSetStart; c <= colMap.repsSetEnd; c++) {
     const s = trimCell(row[c]);
-    // Handle Excel dates parsed as date strings for reps targets like 8-12
-    if (s !== "" && !isNaN(Date.parse(s)) && s.includes("-")) {
-      // Excel sometimes returns date serial or formatted strings. If it looks like a date,
-      // let's try to just preserve the text, but usually it is just numbers like '10', '8', etc.
+    if (s !== "" && !s.includes("-")) {
       reps.push(s);
     } else {
-      reps.push(s);
+      reps.push("");
     }
   }
-  while (reps.length > 0 && reps[reps.length - 1] === "") {
-    reps.pop();
+  
+  const finalReps = reps.slice(0, numWeights).map(r => r || "0");
+  while (finalReps.length > 0 && finalReps[finalReps.length - 1] === "0") {
+    finalReps.pop();
   }
-  return reps.join(", ");
+  return finalReps.join(", ");
 }
 
 // ─── training-sheet parser ───────────────────────────────────────────────────

@@ -274,39 +274,40 @@ export default function VergelijkPage() {
                     <div key={eIdx} className="px-4 py-4 hover:bg-secondary/10 transition-colors">
                       <div className="text-sm font-bold mb-3 text-foreground">{ex.name}</div>
                       
-                      <div className="space-y-2">
+                      <div className="grid grid-cols-[auto_1fr_1fr_auto] gap-2 items-center text-xs mb-1 px-1 text-muted-foreground font-semibold">
+                        <div className="w-4 text-center">#</div>
+                        <div className="truncate pr-1">Wk {weekA}</div>
+                        <div className="truncate pr-1">Wk {weekB}</div>
+                        <div className="text-right">Diff</div>
+                      </div>
+
+                      <div className="space-y-0.5">
                         {ex.sets.map((set: any, sIdx: number) => (
-                          <div key={sIdx} className="grid grid-cols-[auto_1fr_1fr_auto] md:grid-cols-3 gap-2 md:gap-4 items-center text-sm">
-                            {/* Mobile Layout Hack: Set number column */}
-                            <div className="text-xs font-semibold text-muted-foreground w-10 md:hidden">Set {set.setNum}</div>
+                          <div key={sIdx} className="grid grid-cols-[auto_1fr_1fr_auto] gap-2 items-center py-1.5 border-b border-border/40 last:border-0 text-sm">
+                            {/* Set # */}
+                            <div className="w-4 text-center font-bold text-muted-foreground">{sIdx + 1}</div>
                             
-                            {/* Week A Set */}
-                            <div className="flex flex-col md:flex-row md:items-center gap-1">
-                              <span className="text-xs font-semibold text-muted-foreground hidden md:inline-block w-12">Set {set.setNum}:</span>
-                              {set.weightA !== null ? (
-                                <span className="font-medium bg-secondary px-2 py-0.5 rounded-md w-fit">
-                                  {set.weightA}kg <span className="text-muted-foreground text-xs mx-0.5">×</span> {set.repsA || "-"}
-                                </span>
-                              ) : <span className="text-muted-foreground italic text-xs">Niet gelogd</span>}
+                            {/* Week A */}
+                            <div className="flex items-center gap-0.5">
+                              <span className="font-semibold tabular-nums">{set.weightA !== null ? set.weightA : "-"}</span>
+                              <span className="text-muted-foreground text-xs mx-0.5">×</span>
+                              <span className="font-semibold tabular-nums">{set.repsA || "-"}</span>
                             </div>
                             
-                            {/* Week B Set */}
-                            <div className="flex flex-col md:flex-row md:items-center gap-1 border-l border-border pl-2 md:border-none md:pl-0">
-                              <span className="text-xs font-semibold text-muted-foreground hidden md:inline-block w-12">Set {set.setNum}:</span>
-                              {set.weightB !== null ? (
-                                <span className="font-medium bg-secondary px-2 py-0.5 rounded-md w-fit">
-                                  {set.weightB}kg <span className="text-muted-foreground text-xs mx-0.5">×</span> {set.repsB || "-"}
-                                </span>
-                              ) : <span className="text-muted-foreground italic text-xs">Niet gelogd</span>}
+                            {/* Week B */}
+                            <div className="flex items-center gap-0.5">
+                              <span className="font-semibold tabular-nums">{set.weightB !== null ? set.weightB : "-"}</span>
+                              <span className="text-muted-foreground text-xs mx-0.5">×</span>
+                              <span className="font-semibold tabular-nums">{set.repsB || "-"}</span>
                             </div>
                             
                             {/* Diff */}
-                            <div className="flex flex-col justify-end items-end gap-1">
+                            <div className="flex flex-col sm:flex-row justify-end items-end sm:items-center gap-1 sm:gap-2 text-xs">
                               <DiffText a={set.weightA} b={set.weightB} unit="kg" decimals={1} />
                               <DiffText 
                                 a={set.repsA ? parseInt(set.repsA) : null} 
                                 b={set.repsB ? parseInt(set.repsB) : null} 
-                                unit=" reps" 
+                                unit="r" 
                                 decimals={0} 
                               />
                             </div>
