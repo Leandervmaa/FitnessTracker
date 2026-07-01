@@ -17,6 +17,27 @@ import { getWeekPlan, getWorkoutPlan } from "../services/planningService.js";
 const router = Router();
 const DAILY_TARGET_LABEL = "Dagelijks";
 
+function clean(value: unknown): string | null {
+  const text = String(value || "").trim();
+  return text || null;
+}
+
+function param(value: string | string[] | undefined): string {
+  return Array.isArray(value) ? value[0] || "" : value || "";
+}
+
+function intValue(value: unknown, fallback = 0): number {
+  const num = Number(value);
+  return Number.isFinite(num) ? Math.round(num) : fallback;
+}
+
+function numberString(value: unknown): string | null {
+  if (value === null || value === undefined || value === "") return null;
+  const num = Number(String(value).replace(",", "."));
+  return Number.isFinite(num) ? String(num) : null;
+}
+
+
 async function findWorkoutForClient(clientId: string, workoutId: string) {
   const [workout] = await db
     .select()
@@ -553,6 +574,139 @@ router.post("/templates/from-workout/:workoutId", requireTrainer, async (req, re
   } catch (err) {
     req.log.error({ err }, "Failed to create training template");
     return void res.status(500).json({ error: "Template opslaan mislukt" });
+  }
+});
+
+/** POST /api/plans/templates — Create a new blank template */
+router.post("/templates", requireTrainer, async (req, res) => {
+  try {
+    const name = clean(req.body?.name);
+    if (!name) return void res.status(400).json({ error: "Template naam is verplicht" });
+
+    const [template] = await db
+      .insert(trainingDayTemplatesTable)
+      .values({ id: randomId("tpl"), name, notes: clean(req.body?.notes) })
+      .returning();
+
+    return void res.status(201).json({ ...template, exercises: [] });
+  } catch (err) {
+    req.log.error({ err }, "Failed to create blank template");
+    return void res.status(500).json({ error: "Template aanmaken mislukt" });
+  }
+});
+
+/** PUT /api/plans/templates/:templateId — Update template name/notes */
+router.put("/templates/:templateId", requireTrainer, async (req, res) => {
+  try {
+    const templateId = param(req.params.templateId);
+    const [existing] = await db.select().from(trainingDayTemplatesTable).where(eq(trainingDayTemplatesTable.id, templateId));
+    if (!existing) return void res.status(404).json({ error: "Template niet gevonden" });
+
+    const [updated] = await db
+      .update(trainingDayTemplatesTable)
+      .set({
+        name: req.body?.name !== undefined ? clean(req.body.name) || existing.name : undefined,
+        notes: req.body?.notes !== undefined ? clean(req.body.notes) : undefined,
+      })
+      .where(eq(trainingDayTemplatesTable.id, templateId))
+      .returning();
+
+    const exercises = await db
+      .select()
+      .from(trainingDayTemplateExercisesTable)
+      .where(eq(trainingDayTemplateExercisesTable.templateId, templateId))
+      .orderBy(asc(trainingDayTemplateExercisesTable.sortOrder));
+
+    return void res.json({ ...updated, exercises });
+  } catch (err) {
+    req.log.error({ err }, "Failed to update template");
+    return void res.status(500).json({ error: "Template bijwerken mislukt" });
+  }
+});
+
+/** DELETE /api/plans/templates/:templateId — Delete template and its exercises */
+router.delete("/templates/:templateId", requireTrainer, async (req, res) => {
+  try {
+    const templateId = param(req.params.templateId);
+    await db.delete(trainingDayTemplateExercisesTable).where(eq(trainingDayTemplateExercisesTable.templateId, templateId));
+    await db.delete(trainingDayTemplatesTable).where(eq(trainingDayTemplatesTable.id, templateId));
+    return void res.status(204).send();
+  } catch (err) {
+    req.log.error({ err }, "Failed to delete template");
+    return void res.status(500).json({ error: "Template verwijderen mislukt" });
+  }
+});
+
+/** POST /api/plans/templates/:templateId/exercises — Add exercise to template */
+router.post("/templates/:templateId/exercises", requireTrainer, async (req, res) => {
+  try {
+    const templateId = param(req.params.templateId);
+    const [template] = await db.select().from(trainingDayTemplatesTable).where(eq(trainingDayTemplatesTable.id, templateId));
+    if (!template) return void res.status(404).json({ error: "Template niet gevonden" });
+
+    const name = clean(req.body?.name);
+    if (!name) return void res.status(400).json({ error: "Naam is verplicht" });
+
+    const [exercise] = await db
+      .insert(trainingDayTemplateExercisesTable)
+      .values({
+        id: randomId("tpe"),
+        templateId,
+        exerciseLibraryId: clean(req.body?.exerciseLibraryId),
+        name,
+        videoUrl: clean(req.body?.videoUrl),
+        imageUrl: clean(req.body?.imageUrl),
+        notes: clean(req.body?.notes),
+        sets: intValue(req.body?.sets, 3),
+        repRange: clean(req.body?.repRange),
+        targetRpe: clean(req.body?.targetRpe),
+        sortOrder: intValue(req.body?.sortOrder, Date.now()),
+      })
+      .returning();
+
+    return void res.status(201).json(exercise);
+  } catch (err) {
+    req.log.error({ err }, "Failed to add exercise to template");
+    return void res.status(500).json({ error: "Oefening toevoegen aan template mislukt" });
+  }
+});
+
+/** DELETE /api/plans/templates/:templateId/exercises/:exerciseId — Remove exercise from template */
+router.delete("/templates/:templateId/exercises/:exerciseId", requireTrainer, async (req, res) => {
+  try {
+    const exerciseId = param(req.params.exerciseId);
+    await db.delete(trainingDayTemplateExercisesTable).where(eq(trainingDayTemplateExercisesTable.id, exerciseId));
+    return void res.status(204).send();
+  } catch (err) {
+    req.log.error({ err }, "Failed to delete template exercise");
+    return void res.status(500).json({ error: "Oefening verwijderen mislukt" });
+  }
+});
+
+/** PUT /api/plans/templates/:templateId/exercises/:exerciseId — Reorder/update template exercise */
+router.put("/templates/:templateId/exercises/:exerciseId", requireTrainer, async (req, res) => {
+  try {
+    const exerciseId = param(req.params.exerciseId);
+    const [existing] = await db.select().from(trainingDayTemplateExercisesTable).where(eq(trainingDayTemplateExercisesTable.id, exerciseId));
+    if (!existing) return void res.status(404).json({ error: "Oefening niet gevonden" });
+
+    const [updated] = await db
+      .update(trainingDayTemplateExercisesTable)
+      .set({
+        name: req.body?.name !== undefined ? clean(req.body.name) || existing.name : undefined,
+        sets: req.body?.sets !== undefined ? intValue(req.body.sets, existing.sets) : undefined,
+        repRange: req.body?.repRange !== undefined ? clean(req.body.repRange) : undefined,
+        targetRpe: req.body?.targetRpe !== undefined ? clean(req.body.targetRpe) : undefined,
+        notes: req.body?.notes !== undefined ? clean(req.body.notes) : undefined,
+        sortOrder: req.body?.sortOrder !== undefined ? intValue(req.body.sortOrder, existing.sortOrder) : undefined,
+      })
+      .where(eq(trainingDayTemplateExercisesTable.id, exerciseId))
+      .returning();
+
+    return void res.json(updated);
+  } catch (err) {
+    req.log.error({ err }, "Failed to update template exercise");
+    return void res.status(500).json({ error: "Oefening bijwerken mislukt" });
   }
 });
 
