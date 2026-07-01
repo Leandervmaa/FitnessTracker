@@ -9,7 +9,7 @@ router.get("/", (req, res) => {
   res.json({
     ...status,
     excelBestandsPad: status.excelFilePath,
-    uploadInstructies: status.source === "demo"
+    uploadInstructies: status.source === "none"
       ? {
           stap1: "Ga naar de app en open 'Instellingen' via het tandwiel-icoon rechts bovenin.",
           stap2: "Klik op 'Excel-bestand uploaden' en selecteer het .xlsx bestand.",

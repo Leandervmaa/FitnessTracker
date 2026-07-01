@@ -43,7 +43,7 @@ export default function TrainingList() {
     },
   });
 
-  const visibleWorkouts = plannedWeek?.workouts?.length ? plannedWeek.workouts : workouts;
+  const visibleWorkouts = plannedWeek?.workouts?.length ? plannedWeek.workouts : workouts ?? [];
   const loading = isLoading || isPlanningLoading;
 
   return (
@@ -66,7 +66,17 @@ export default function TrainingList() {
           </>
         )}
 
-        {visibleWorkouts && visibleWorkouts.map(workout => {
+        {!loading && visibleWorkouts.length === 0 && (
+          <div className="w-full border border-dashed border-border rounded-xl p-8 text-center bg-card">
+            <PlayCircle className="h-9 w-9 text-muted-foreground mx-auto mb-3" />
+            <h2 className="text-lg font-bold text-card-foreground">Geen training beschikbaar</h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              Je trainer heeft voor deze week nog geen training klaargezet.
+            </p>
+          </div>
+        )}
+
+        {visibleWorkouts.map(workout => {
           const progress = workout.exerciseCount > 0 
             ? Math.round((workout.completedCount / workout.exerciseCount) * 100) 
             : 0;

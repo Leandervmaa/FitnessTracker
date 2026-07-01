@@ -1,14 +1,20 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { exerciseLogsTable, nutritionEntriesTable, feedbackAnswersTable, progressPhotosTable } from "@workspace/db";
+import {
+  exerciseLogsTable,
+  exerciseSetLogsTable,
+  feedbackAnswersTable,
+  nutritionEntriesTable,
+  plannedWorkoutExercisesTable,
+  plannedWorkoutsTable,
+  progressPhotosTable,
+} from "@workspace/db";
 import { getAllWeekNumbers, getWeek } from "../services/dataService.js";
-import { eq, and } from "drizzle-orm";
+import { asc, eq, and } from "drizzle-orm";
 import { getScopedClientId } from "../lib/auth.js";
-import { DEFAULT_CLIENT_ID } from "../services/identityService.js";
 
 const router = Router();
 
-const TOTAL_WORKOUTS   = 4;
 const DAYS_OF_WEEK     = 7;
 const QUESTIONS_COUNT  = 4;
 const PHOTO_ANGLES     = ["front", "side", "back"] as const;
@@ -17,26 +23,11 @@ const PHOTO_WEEKS      = new Set([1, 4, 7, 10, 13, 16, 20, 23, 26]);
 async function buildWeekSummary(weekNumber: number, clientId: string) {
   const weekProgram = getWeek(weekNumber, clientId);
 
-  // Weeks 1–14 are already finished — mark everything as complete
-  if (clientId === DEFAULT_CLIENT_ID && weekNumber <= 14) {
-    return {
-      weekNumber,
-      label: `Week ${weekNumber}`,
-      isComplete:            true,
-      workoutsCompleted:     TOTAL_WORKOUTS,
-      nutritionDaysCompleted: DAYS_OF_WEEK,
-      feedbackCompleted:     true,
-      photosRequired:        PHOTO_WEEKS.has(weekNumber),
-      photosComplete:        true,
-      // Per-section flags
-      trainingComplete:      true,
-      dagboekComplete:       true,
-    };
-  }
-
-  // Week 15+ — check actual DB data
-  const [logs, nutritionEntries, feedbackAnswers, photos] = await Promise.all([
+  const [logs, plannedWorkouts, plannedExercises, plannedSetLogs, nutritionEntries, feedbackAnswers, photos] = await Promise.all([
     db.select().from(exerciseLogsTable).where(and(eq(exerciseLogsTable.clientId, clientId), eq(exerciseLogsTable.weekNumber, weekNumber))),
+    db.select().from(plannedWorkoutsTable).where(and(eq(plannedWorkoutsTable.clientId, clientId), eq(plannedWorkoutsTable.weekNumber, weekNumber))),
+    db.select().from(plannedWorkoutExercisesTable).where(and(eq(plannedWorkoutExercisesTable.clientId, clientId), eq(plannedWorkoutExercisesTable.weekNumber, weekNumber))),
+    db.select().from(exerciseSetLogsTable).where(and(eq(exerciseSetLogsTable.clientId, clientId), eq(exerciseSetLogsTable.weekNumber, weekNumber))),
     db.select().from(nutritionEntriesTable).where(and(eq(nutritionEntriesTable.clientId, clientId), eq(nutritionEntriesTable.weekNumber, weekNumber))),
     db.select().from(feedbackAnswersTable).where(and(eq(feedbackAnswersTable.clientId, clientId), eq(feedbackAnswersTable.weekNumber, weekNumber))),
     PHOTO_WEEKS.has(weekNumber)
@@ -44,16 +35,29 @@ async function buildWeekSummary(weekNumber: number, clientId: string) {
       : Promise.resolve([]),
   ]);
 
-  const completedExerciseIds = new Set(logs.map((l) => l.exerciseId));
-  const completedWorkouts = weekProgram?.workouts.filter((workout) =>
-    workout.exercises.every((e) => completedExerciseIds.has(e.id))
-  ).length ?? 0;
+  let workoutsTotal = 0;
+  let completedWorkouts = 0;
+
+  if (plannedWorkouts.length > 0) {
+    workoutsTotal = plannedWorkouts.length;
+    const completedPlannedExerciseIds = new Set(plannedSetLogs.map((log) => log.plannedExerciseId));
+    completedWorkouts = plannedWorkouts.filter((workout) => {
+      const exercises = plannedExercises.filter((exercise) => exercise.workoutId === workout.id);
+      return exercises.length > 0 && exercises.every((exercise) => completedPlannedExerciseIds.has(exercise.id));
+    }).length;
+  } else if (weekProgram) {
+    workoutsTotal = weekProgram.workouts.length;
+    const completedExerciseIds = new Set(logs.map((l) => l.exerciseId));
+    completedWorkouts = weekProgram.workouts.filter((workout) =>
+      workout.exercises.length > 0 && workout.exercises.every((e) => completedExerciseIds.has(e.id))
+    ).length;
+  }
 
   const nutritionDays       = new Set(nutritionEntries.map((n) => n.day)).size;
   const photosRequired      = PHOTO_WEEKS.has(weekNumber);
   const uploadedAngles      = new Set(photos.map((p) => p.angle));
   const photosComplete      = !photosRequired || PHOTO_ANGLES.every(a => uploadedAngles.has(a));
-  const trainingComplete    = completedWorkouts >= TOTAL_WORKOUTS;
+  const trainingComplete    = workoutsTotal > 0 && completedWorkouts >= workoutsTotal;
   const dagboekComplete     = nutritionDays >= DAYS_OF_WEEK;
   const feedbackComplete    = feedbackAnswers.length >= QUESTIONS_COUNT;
 
@@ -64,6 +68,7 @@ async function buildWeekSummary(weekNumber: number, clientId: string) {
     label: `Week ${weekNumber}`,
     isComplete,
     workoutsCompleted:      completedWorkouts,
+    workoutsTotal,
     nutritionDaysCompleted: nutritionDays,
     feedbackCompleted:      feedbackComplete,
     photosRequired,
@@ -76,7 +81,17 @@ async function buildWeekSummary(weekNumber: number, clientId: string) {
 router.get("/", async (req, res) => {
   try {
     const clientId = getScopedClientId(req);
-    const allWeekNumbers = getAllWeekNumbers(clientId);
+    const plannedWeeks = await db
+      .select({ weekNumber: plannedWorkoutsTable.weekNumber })
+      .from(plannedWorkoutsTable)
+      .where(eq(plannedWorkoutsTable.clientId, clientId))
+      .orderBy(asc(plannedWorkoutsTable.weekNumber));
+    const allWeekNumbers = Array.from(
+      new Set([...getAllWeekNumbers(clientId), ...plannedWeeks.map((week) => week.weekNumber)]),
+    ).sort((a, b) => a - b);
+    if (allWeekNumbers.length === 0) {
+      return void res.json([await buildWeekSummary(1, clientId)]);
+    }
     const weeks = await Promise.all(allWeekNumbers.map((weekNumber) => buildWeekSummary(weekNumber, clientId)));
     return void res.json(weeks);
   } catch (err) {
@@ -88,8 +103,15 @@ router.get("/", async (req, res) => {
 router.get("/current", async (req, res) => {
   try {
     const clientId = getScopedClientId(req);
-    const allWeekNumbers = getAllWeekNumbers(clientId);
-    let currentWeek = allWeekNumbers[0];
+    const plannedWeeks = await db
+      .select({ weekNumber: plannedWorkoutsTable.weekNumber })
+      .from(plannedWorkoutsTable)
+      .where(eq(plannedWorkoutsTable.clientId, clientId))
+      .orderBy(asc(plannedWorkoutsTable.weekNumber));
+    const allWeekNumbers = Array.from(
+      new Set([...getAllWeekNumbers(clientId), ...plannedWeeks.map((week) => week.weekNumber)]),
+    ).sort((a, b) => a - b);
+    let currentWeek = allWeekNumbers[0] ?? 1;
 
     for (const weekNumber of allWeekNumbers) {
       const summary = await buildWeekSummary(weekNumber, clientId);
@@ -112,7 +134,7 @@ router.get("/:weekNumber/workouts", async (req, res) => {
 
     const clientId = getScopedClientId(req);
     const weekProgram = getWeek(weekNumber, clientId);
-    if (!weekProgram) return void res.status(404).json({ error: "Week niet gevonden" });
+    if (!weekProgram) return void res.json([]);
 
     const logs = await db
       .select()

@@ -370,6 +370,65 @@ router.post("/workouts/:workoutId/exercises", requireTrainer, async (req, res) =
   }
 });
 
+router.post("/workouts/:workoutId/exercises/from-template", requireTrainer, async (req, res) => {
+  try {
+    const clientId = getScopedClientId(req);
+    const workout = await findWorkoutForClient(clientId, param(req.params.workoutId));
+    if (!workout) return void res.status(404).json({ error: "Training niet gevonden" });
+
+    const templateId = clean(req.body?.templateId);
+    if (!templateId) return void res.status(400).json({ error: "Template is verplicht" });
+
+    const [template] = await db
+      .select()
+      .from(trainingDayTemplatesTable)
+      .where(eq(trainingDayTemplatesTable.id, templateId));
+    if (!template) return void res.status(404).json({ error: "Template niet gevonden" });
+
+    const templateExercises = await db
+      .select()
+      .from(trainingDayTemplateExercisesTable)
+      .where(eq(trainingDayTemplateExercisesTable.templateId, template.id))
+      .orderBy(asc(trainingDayTemplateExercisesTable.sortOrder));
+    if (templateExercises.length === 0) {
+      return void res.status(400).json({ error: "Template bevat nog geen oefeningen" });
+    }
+
+    const existingExercises = await db
+      .select()
+      .from(plannedWorkoutExercisesTable)
+      .where(eq(plannedWorkoutExercisesTable.workoutId, workout.id));
+    const baseSortOrder = existingExercises.reduce((max, exercise) => Math.max(max, exercise.sortOrder), 0);
+
+    const created = await db
+      .insert(plannedWorkoutExercisesTable)
+      .values(
+        templateExercises.map((exercise, index) => ({
+          id: randomId("pe"),
+          workoutId: workout.id,
+          clientId,
+          weekNumber: workout.weekNumber,
+          exerciseLibraryId: exercise.exerciseLibraryId,
+          name: exercise.name,
+          videoUrl: exercise.videoUrl,
+          imageUrl: exercise.imageUrl,
+          notes: exercise.notes,
+          sets: exercise.sets,
+          repRange: exercise.repRange,
+          targetRpe: exercise.targetRpe,
+          sortOrder: baseSortOrder + index + 1,
+        })),
+      )
+      .returning();
+
+    syncWorkbook(req, clientId, workout.weekNumber);
+    return void res.status(201).json(created);
+  } catch (err) {
+    req.log.error({ err }, "Failed to add template exercises to workout");
+    return void res.status(500).json({ error: "Template toevoegen mislukt" });
+  }
+});
+
 router.put("/exercises/:exerciseId", requireTrainer, async (req, res) => {
   try {
     const clientId = getScopedClientId(req);

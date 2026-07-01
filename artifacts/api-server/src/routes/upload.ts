@@ -61,7 +61,7 @@ router.delete("/excel", requireTrainer, (req, res) => {
   const excelPath = getExcelPath(getScopedClientId(req));
   if (fs.existsSync(excelPath)) {
     fs.unlinkSync(excelPath);
-    res.json({ bericht: "Excel-bestand verwijderd. App gebruikt nu demodata." });
+    res.json({ bericht: "Excel-bestand verwijderd. Er is nu geen trainingsschema gekoppeld." });
   } else {
     res.status(404).json({ error: "Geen Excel-bestand aanwezig." });
   }

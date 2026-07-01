@@ -14,7 +14,7 @@ import { apiFetch } from "@/lib/api";
 const PHOTO_WEEKS = new Set([1, 4, 7, 10, 13, 16, 20, 23, 26]);
 
 interface DataStatus {
-  source: "excel" | "demo";
+  source: "excel" | "none";
   excelFilePresent: boolean;
   weeksLoaded?: number;
 }
@@ -137,6 +137,8 @@ export default function Home() {
   const dagboekDone   = currentWeekData?.dagboekComplete   ?? false;
   const feedbackDone  = currentWeekData?.feedbackCompleted ?? false;
   const photosDone    = currentWeekData?.photosComplete    ?? false;
+  const workoutsTotal = currentWeekData?.workoutsTotal ?? 0;
+  const workoutsCompleted = currentWeekData?.workoutsCompleted ?? 0;
 
   return (
     <div className="min-h-[100dvh] w-full bg-background flex flex-col items-center p-6 pb-24 max-w-md mx-auto relative">
@@ -164,7 +166,7 @@ export default function Home() {
             <span className="font-medium">
               {dataStatus.source === "excel"
                 ? `Excel geladen — ${dataStatus.weeksLoaded} weken`
-                : "Demodata actief — upload Excel voor echte data"}
+                : "Geen trainingsschema gekoppeld"}
             </span>
           </div>
         </Link>
@@ -192,10 +194,17 @@ export default function Home() {
           icon={<Dumbbell size={22} className="text-primary" />}
           iconBg="bg-primary/10"
           title="Trainingen"
-          subtitle={trainingDone
-            ? `${currentWeekData?.workoutsCompleted ?? 4} van 4 workouts voltooid`
-            : `${currentWeekData?.workoutsCompleted ?? 0} van 4 workouts voltooid`}
-          badge={<StatusBadge done={trainingDone} pendingLabel={`${currentWeekData?.workoutsCompleted ?? 0}/4`} />}
+          subtitle={workoutsTotal === 0
+            ? "Geen training beschikbaar"
+            : `${workoutsCompleted} van ${workoutsTotal} trainingen voltooid`}
+          badge={
+            <StatusBadge
+              done={trainingDone}
+              notRequired={workoutsTotal === 0}
+              notRequiredLabel="Geen training"
+              pendingLabel={`${workoutsCompleted}/${workoutsTotal}`}
+            />
+          }
         />
 
         <NavCard

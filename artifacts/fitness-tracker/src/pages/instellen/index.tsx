@@ -7,7 +7,7 @@ import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/components/auth-context";
 
 interface DataStatus {
-  source: "excel" | "demo";
+  source: "excel" | "none";
   excelFilePresent: boolean;
   sheetNames?: string[];
   weeksLoaded?: number;
@@ -91,7 +91,7 @@ export default function Instellen() {
   };
 
   const handleDelete = async () => {
-    if (!confirm("Weet je zeker dat je het Excel-bestand wilt verwijderen? De app gebruikt dan weer demodata.")) return;
+    if (!confirm("Weet je zeker dat je het Excel-bestand wilt verwijderen? Er is daarna geen trainingsschema gekoppeld.")) return;
     setDeleting(true);
     try {
       const res = await apiFetch("/api/upload/excel", { method: "DELETE" });
@@ -179,7 +179,7 @@ export default function Instellen() {
           )}
           <div className="flex-1 min-w-0">
             <p className={`font-bold text-base ${status?.source === "excel" ? "text-green-800 dark:text-green-300" : "text-amber-800 dark:text-amber-300"}`}>
-              {status?.source === "excel" ? "Excel-data actief" : "Demodata actief"}
+              {status?.source === "excel" ? "Excel-data actief" : "Geen trainingsschema gekoppeld"}
             </p>
             {status?.source === "excel" ? (
               <div className="mt-1 space-y-0.5">
@@ -195,7 +195,7 @@ export default function Instellen() {
               </div>
             ) : (
               <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">
-                Upload het Excel-bestand om echte trainingsdata te tonen.
+                Upload of koppel een bestand om trainingsdata te tonen.
               </p>
             )}
           </div>
@@ -253,7 +253,7 @@ export default function Instellen() {
               disabled={deleting}
             >
               <Trash2 className="h-4 w-4 mr-2" />
-              {deleting ? "Verwijderen..." : "Bestand verwijderen (terug naar demo)"}
+              {deleting ? "Verwijderen..." : "Bestand verwijderen"}
             </Button>
           )}
         </div>}

@@ -1,16 +1,35 @@
 /**
  * Unified data service.
  * Tries to load from uploaded Excel file first.
- * Falls back to hardcoded workoutProgram.ts when file is absent.
  */
 import { parseExcelFile, getExcelPath, type ParsedExcelData, type ParsedWorkout, type ParsedExercise, type ParsedFeedbackQuestion, type ParsedFeedbackAnswer, type ParsedProgressieWeek, type ParsedProgressieDay } from "./excelParser.js";
-import { getWeekProgram, getAllWeeks, getWorkoutById as getWorkoutByIdHardcoded, type WorkoutDefinition, type ExerciseDefinition } from "../data/workoutProgram.js";
 import fs from "fs";
 
 type CacheEntry = {
   data: ParsedExcelData | null;
   lastMtime: number | null;
 };
+
+export interface ExerciseDefinition {
+  id: string;
+  name: string;
+  notes?: string | null;
+  sets: number | null;
+  reps: string | null;
+  prescribedWeight: string | null;
+  sheetWeights?: string | null;
+  sheetReps?: string | null;
+  videoUrl: string | null;
+  imageUrl: string | null;
+  order: number;
+}
+
+export interface WorkoutDefinition {
+  id: string;
+  name: string;
+  dayLabel: string;
+  exercises: ExerciseDefinition[];
+}
 
 const cacheByExcelPath = new Map<string, CacheEntry>();
 
@@ -37,7 +56,7 @@ function refreshIfNeeded(clientId?: string): ParsedExcelData | null {
 }
 
 export function getDataStatus(clientId?: string): {
-  source: "excel" | "demo";
+  source: "excel" | "none";
   excelFilePresent: boolean;
   sheetNames?: string[];
   weeksLoaded?: number;
@@ -57,7 +76,7 @@ export function getDataStatus(clientId?: string): {
     };
   }
   return {
-    source: "demo",
+    source: "none",
     excelFilePresent: false,
     excelFilePath,
   };
@@ -93,7 +112,7 @@ export function getAllWeekNumbers(clientId?: string): number[] {
   if (data && data.weeks.length > 0) {
     return data.weeks.map((w) => w.weekNumber);
   }
-  return getAllWeeks();
+  return [];
 }
 
 export function getWeek(weekNumber: number, clientId?: string): { weekNumber: number; workouts: WorkoutDefinition[] } | undefined {
@@ -106,8 +125,7 @@ export function getWeek(weekNumber: number, clientId?: string): { weekNumber: nu
       workouts: week.workouts.map(toWorkoutDef),
     };
   }
-  const fallback = getWeekProgram(weekNumber);
-  return fallback;
+  return undefined;
 }
 
 export function getWorkoutById(workoutId: string, clientId?: string): (WorkoutDefinition & { weekNumber: number }) | undefined {
@@ -121,7 +139,7 @@ export function getWorkoutById(workoutId: string, clientId?: string): (WorkoutDe
     }
     return undefined;
   }
-  return getWorkoutByIdHardcoded(workoutId);
+  return undefined;
 }
 
 export function getFeedbackQuestions(clientId?: string): ParsedFeedbackQuestion[] {

@@ -160,12 +160,12 @@ export default function WeekplannerPage() {
   const [exerciseForm, setExerciseForm] = useState(emptyExerciseForm);
   const [librarySearch, setLibrarySearch] = useState("");
 
-  // Template picker in toolbar
-  const [templateId, setTemplateId] = useState("");
-
   // Template edit dialog
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
   const [templateEditOpen, setTemplateEditOpen] = useState(false);
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
+  const [activeTemplateWorkout, setActiveTemplateWorkout] = useState<PlannedWorkout | null>(null);
+  const [workoutTemplateId, setWorkoutTemplateId] = useState("");
 
   // Nutrition targets
   const [targets, setTargets] = useState<NutritionTarget[]>([]);
@@ -296,27 +296,26 @@ export default function WeekplannerPage() {
     onError: (err) => setError(err instanceof Error ? err.message : "Week kopieren mislukt"),
   });
 
-  const applyTemplate = useMutation({
+  const addTemplateToWorkout = useMutation({
     mutationFn: async () => {
-      const template = templates.find((item) => item.id === templateId);
+      if (!activeTemplateWorkout) throw new Error("Geen trainingsdag gekozen");
+      const template = templates.find((item) => item.id === workoutTemplateId);
       if (!template) throw new Error("Kies een template");
-      const order = week?.workouts?.length || 0;
-      const res = await apiFetch(`/api/plans/week/${plannerWeekNumber}/workouts/from-template`, {
+      const res = await apiFetch(`/api/plans/workouts/${activeTemplateWorkout.id}/exercises/from-template`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          templateId,
-          name: template.name,
-          dayLabel: `Training ${String.fromCharCode(65 + order)}`,
-          sortOrder: order,
-        }),
+        body: JSON.stringify({ templateId: template.id }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Template toepassen mislukt");
+      if (!res.ok) throw new Error(data.error || "Template toevoegen mislukt");
       return data;
     },
-    onSuccess: invalidateWeek,
-    onError: (err) => setError(err instanceof Error ? err.message : "Template toepassen mislukt"),
+    onSuccess: () => {
+      setTemplateDialogOpen(false);
+      setWorkoutTemplateId("");
+      invalidateWeek();
+    },
+    onError: (err) => setError(err instanceof Error ? err.message : "Template toevoegen mislukt"),
   });
 
   const saveExercise = useMutation({
@@ -554,6 +553,13 @@ export default function WeekplannerPage() {
     setTemplateEditOpen(true);
   };
 
+  const openWorkoutTemplateDialog = (workout: PlannedWorkout) => {
+    setActiveTemplateWorkout(workout);
+    setWorkoutTemplateId("");
+    setError("");
+    setTemplateDialogOpen(true);
+  };
+
   // Keep editingTemplate in sync with refreshed templates data
   useEffect(() => {
     if (!editingTemplate) return;
@@ -582,6 +588,9 @@ export default function WeekplannerPage() {
     ? [...editingTemplate.exercises].sort((a, b) => a.sortOrder - b.sortOrder)
     : [];
   const nextWeekNumber = plannedWeeks?.nextWeekNumber || plannerWeekNumber + 1;
+  const weekOptions = Array.from(
+    new Set([...(plannedWeeks?.weekNumbers || []), plannerWeekNumber]),
+  ).sort((a, b) => a - b);
 
   return (
     <div className="min-h-[100dvh] w-full bg-background">
@@ -596,26 +605,32 @@ export default function WeekplannerPage() {
           </div>
           <div className="flex-1 min-w-0">
             <h1 className="text-xl font-black text-foreground leading-tight">Weekplanner</h1>
-            <p className="text-xs text-muted-foreground">Week {plannerWeekNumber}</p>
+            <p className="text-xs text-muted-foreground">Je bewerkt nu week {plannerWeekNumber}</p>
           </div>
 
-          {/* Week controls */}
-          <div className="flex items-center gap-2">
-            <Label className="text-xs text-muted-foreground whitespace-nowrap hidden sm:block">Week nr.</Label>
-            <Input
-              type="number"
-              min={1}
-              value={plannerWeekNumber}
-              onChange={(e) => chooseWeek(Number(e.target.value) || 1)}
-              className="h-9 w-20 font-bold text-center"
-            />
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <div className="flex items-center gap-2 rounded-md border border-border bg-card px-2 py-1">
+              <Label className="text-xs text-muted-foreground whitespace-nowrap">Week</Label>
+              <select
+                value={plannerWeekNumber}
+                onChange={(e) => chooseWeek(Number(e.target.value))}
+                className="h-8 min-w-28 rounded-md border border-input bg-background px-2 text-sm font-bold"
+              >
+                {weekOptions.map((weekNumber) => (
+                  <option key={weekNumber} value={weekNumber}>
+                    Week {weekNumber}
+                  </option>
+                ))}
+              </select>
+            </div>
             <Button
               variant="outline"
               size="sm"
               onClick={() => chooseWeek(nextWeekNumber)}
               className="h-9 font-bold whitespace-nowrap"
             >
-              Nieuwe week {nextWeekNumber}
+              <Plus className="h-4 w-4 mr-1.5" />
+              Week toevoegen
             </Button>
             <Button
               variant="outline"
@@ -640,7 +655,7 @@ export default function WeekplannerPage() {
               className="h-9 font-bold"
             >
               <Plus className="h-4 w-4 mr-1.5" />
-              Training
+              Trainingsdag toevoegen
             </Button>
 
             <Button
@@ -654,29 +669,9 @@ export default function WeekplannerPage() {
               Week {Math.max(1, plannerWeekNumber - 1)} kopiëren
             </Button>
 
-            <div className="flex gap-2 ml-auto">
-              <select
-                value={templateId}
-                onChange={(e) => setTemplateId(e.target.value)}
-                className="h-9 rounded-md border border-input bg-background px-3 text-sm min-w-[160px]"
-              >
-                <option value="">Template kiezen...</option>
-                {templates.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => applyTemplate.mutate()}
-                disabled={!templateId || applyTemplate.isPending}
-                className="h-9 font-bold"
-              >
-                Toepassen
-              </Button>
-            </div>
+            <p className="ml-auto text-xs font-semibold text-muted-foreground">
+              Actieve week: <span className="text-foreground">Week {plannerWeekNumber}</span>
+            </p>
           </div>
         </div>
       </header>
@@ -699,15 +694,17 @@ export default function WeekplannerPage() {
                   onMoveExercise={moveExercise}
                   onDeleteExercise={(ex) => deleteExercise.mutate(ex)}
                   onUpdateWorkout={(values) => updateWorkout.mutate({ workout, values })}
+                  onUpdateExercise={(exercise, values) => updateExercise.mutate({ exercise, values })}
                   onDeleteWorkout={() => deleteWorkout.mutate(workout)}
                   onSaveTemplate={() => saveTemplate.mutate(workout)}
+                  onAddTemplate={() => openWorkoutTemplateDialog(workout)}
                 />
               ))
             ) : (
               <div className="border border-dashed border-border rounded-lg p-10 text-center text-sm text-muted-foreground">
                 Nog geen trainingen voor week {plannerWeekNumber}.
                 <br />
-                Klik op <strong>+ Training</strong> in de toolbar om te beginnen.
+                Klik op <strong>Trainingsdag toevoegen</strong> om te beginnen.
               </div>
             )}
           </div>
@@ -944,6 +941,73 @@ export default function WeekplannerPage() {
         </DialogContent>
       </Dialog>
 
+      {/* ── Add template to workout dialog ── */}
+      <Dialog open={templateDialogOpen} onOpenChange={setTemplateDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Template toevoegen aan {activeTemplateWorkout?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {templates.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-border p-6 text-center">
+                <p className="text-sm font-semibold text-foreground">Nog geen templates</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Maak templates aan via de bibliotheek.
+                </p>
+                <Button className="mt-4 font-bold" onClick={() => setLocation("/bibliotheek")}>
+                  Naar bibliotheek
+                </Button>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <Label>Template</Label>
+                  <select
+                    value={workoutTemplateId}
+                    onChange={(e) => setWorkoutTemplateId(e.target.value)}
+                    className="h-11 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    <option value="">Kies een template...</option>
+                    {templates.map((template) => (
+                      <option key={template.id} value={template.id}>
+                        {template.name} ({template.exercises.length} oefeningen)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {workoutTemplateId && (
+                  <div className="rounded-md border border-border bg-muted/30 p-3">
+                    <p className="text-xs font-bold uppercase text-muted-foreground mb-2">
+                      Oefeningen die worden toegevoegd
+                    </p>
+                    <ul className="space-y-1.5 text-sm">
+                      {[...(templates.find((template) => template.id === workoutTemplateId)?.exercises || [])]
+                        .sort((a, b) => a.sortOrder - b.sortOrder)
+                        .map((exercise) => (
+                          <li key={exercise.id} className="flex justify-between gap-3">
+                            <span className="font-semibold">{exercise.name}</span>
+                            <span className="text-muted-foreground shrink-0">
+                              {exercise.sets} sets | {exercise.repRange || "-"} | RPE {exercise.targetRpe || "-"}
+                            </span>
+                          </li>
+                        ))}
+                    </ul>
+                  </div>
+                )}
+                {error && <p className="text-sm font-semibold text-destructive">{error}</p>}
+                <Button
+                  className="w-full h-11 font-bold"
+                  onClick={() => addTemplateToWorkout.mutate()}
+                  disabled={!workoutTemplateId || addTemplateToWorkout.isPending}
+                >
+                  {addTemplateToWorkout.isPending ? "Toevoegen..." : "Template toevoegen"}
+                </Button>
+              </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* ── Template edit dialog ── */}
       <Dialog open={templateEditOpen} onOpenChange={setTemplateEditOpen}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
@@ -1025,8 +1089,10 @@ function WorkoutCard({
   onMoveExercise,
   onDeleteExercise,
   onUpdateWorkout,
+  onUpdateExercise,
   onDeleteWorkout,
   onSaveTemplate,
+  onAddTemplate,
 }: {
   workout: PlannedWorkout;
   onAddExercise: (workout: PlannedWorkout) => void;
@@ -1034,8 +1100,10 @@ function WorkoutCard({
   onMoveExercise: (workout: PlannedWorkout, exercise: PlannedExercise, direction: -1 | 1) => void;
   onDeleteExercise: (exercise: PlannedExercise) => void;
   onUpdateWorkout: (values: Partial<PlannedWorkout>) => void;
+  onUpdateExercise: (exercise: PlannedExercise, values: Partial<PlannedExercise>) => void;
   onDeleteWorkout: () => void;
   onSaveTemplate: () => void;
+  onAddTemplate: () => void;
 }) {
   const sorted = [...workout.exercises].sort((a, b) => a.sortOrder - b.sortOrder);
 
@@ -1076,10 +1144,6 @@ function WorkoutCard({
           >
             <Trash2 className="h-4 w-4" />
           </Button>
-          <Button size="sm" className="h-9 font-bold" onClick={() => onAddExercise(workout)}>
-            <Plus className="h-4 w-4 mr-1.5" />
-            Oefening
-          </Button>
         </div>
       </div>
 
@@ -1092,6 +1156,7 @@ function WorkoutCard({
             isFirst={idx === 0}
             isLast={idx === sorted.length - 1}
             onEdit={() => onEditExercise(workout, exercise)}
+            onUpdate={(values) => onUpdateExercise(exercise, values)}
             onMoveUp={() => onMoveExercise(workout, exercise, -1)}
             onMoveDown={() => onMoveExercise(workout, exercise, 1)}
             onDelete={() => onDeleteExercise(exercise)}
@@ -1099,9 +1164,20 @@ function WorkoutCard({
         ))}
         {sorted.length === 0 && (
           <div className="px-4 py-5 text-sm text-muted-foreground text-center">
-            Nog geen oefeningen. Klik op <strong>+ Oefening</strong> om te beginnen.
+            Nog geen oefeningen in deze trainingsdag.
           </div>
         )}
+      </div>
+
+      <div className="border-t border-border bg-muted/20 p-3 flex flex-col sm:flex-row gap-2 justify-end">
+        <Button variant="outline" className="h-10 font-bold" onClick={() => onAddExercise(workout)}>
+          <Plus className="h-4 w-4 mr-1.5" />
+          Oefening toevoegen
+        </Button>
+        <Button variant="outline" className="h-10 font-bold" onClick={onAddTemplate}>
+          <FileText className="h-4 w-4 mr-1.5" />
+          Template toevoegen
+        </Button>
       </div>
     </section>
   );
@@ -1114,6 +1190,7 @@ function ExerciseRow({
   isFirst,
   isLast,
   onEdit,
+  onUpdate,
   onMoveUp,
   onMoveDown,
   onDelete,
@@ -1122,42 +1199,57 @@ function ExerciseRow({
   isFirst: boolean;
   isLast: boolean;
   onEdit: () => void;
+  onUpdate: (values: Partial<PlannedExercise>) => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
   onDelete: () => void;
 }) {
   return (
-    <div className="px-4 py-3 flex items-start gap-3">
+    <div className="px-4 py-3 grid gap-3 lg:grid-cols-[minmax(210px,1.2fr)_72px_120px_92px_minmax(180px,1fr)_auto] lg:items-center">
       {/* Thumbnail */}
-      {exercise.imageUrl ? (
-        <img
-          src={exercise.imageUrl}
-          alt={exercise.name}
-          className="h-14 w-14 rounded-md object-cover shrink-0 mt-0.5"
-        />
-      ) : (
-        <div className="h-14 w-14 rounded-md bg-muted flex items-center justify-center shrink-0 mt-0.5">
-          <Dumbbell className="h-5 w-5 text-muted-foreground/50" />
-        </div>
-      )}
-
-      {/* Content — clickable to edit */}
-      <button type="button" onClick={onEdit} className="flex-1 text-left min-w-0 group">
-        <h3 className="font-bold text-sm group-hover:text-primary transition-colors">{exercise.name}</h3>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          {exercise.sets} sets × {exercise.repRange || "—"} reps
-          {exercise.targetRpe ? ` @ RPE ${exercise.targetRpe}` : ""}
-        </p>
-        {exercise.notes && (
-          <p className="text-xs text-muted-foreground mt-1 flex items-start gap-1">
-            <FileText className="h-3 w-3 shrink-0 mt-0.5" />
-            <span className="line-clamp-2">{exercise.notes}</span>
-          </p>
+      <div className="flex items-center gap-3 min-w-0">
+        {exercise.imageUrl ? (
+          <img
+            src={exercise.imageUrl}
+            alt={exercise.name}
+            className="h-12 w-12 rounded-md object-cover shrink-0"
+          />
+        ) : (
+          <div className="h-12 w-12 rounded-md bg-muted flex items-center justify-center shrink-0">
+            <Dumbbell className="h-5 w-5 text-muted-foreground/50" />
+          </div>
         )}
-      </button>
+        <button type="button" onClick={onEdit} className="min-w-0 text-left group">
+          <h3 className="font-bold text-sm group-hover:text-primary transition-colors truncate">{exercise.name}</h3>
+          <p className="text-xs text-muted-foreground">Klik om details te wijzigen</p>
+        </button>
+      </div>
+
+      <InlineExerciseField
+        label="Sets"
+        defaultValue={String(exercise.sets || "")}
+        type="number"
+        onCommit={(value) => onUpdate({ sets: Number(value) || 0 })}
+      />
+      <InlineExerciseField
+        label="Reprange"
+        defaultValue={exercise.repRange || ""}
+        onCommit={(value) => onUpdate({ repRange: value })}
+      />
+      <InlineExerciseField
+        label="RPE"
+        defaultValue={exercise.targetRpe || ""}
+        type="number"
+        onCommit={(value) => onUpdate({ targetRpe: value })}
+      />
+      <InlineExerciseField
+        label="Notities"
+        defaultValue={exercise.notes || ""}
+        onCommit={(value) => onUpdate({ notes: value })}
+      />
 
       {/* Actions */}
-      <div className="flex gap-1 shrink-0 mt-0.5">
+      <div className="flex gap-1 shrink-0">
         <Button
           variant="ghost"
           size="icon"
@@ -1189,5 +1281,31 @@ function ExerciseRow({
         </Button>
       </div>
     </div>
+  );
+}
+
+function InlineExerciseField({
+  label,
+  defaultValue,
+  onCommit,
+  type = "text",
+}: {
+  label: string;
+  defaultValue: string;
+  onCommit: (value: string) => void;
+  type?: string;
+}) {
+  return (
+    <label className="space-y-1">
+      <span className="text-[10px] font-bold uppercase text-muted-foreground">{label}</span>
+      <Input
+        type={type}
+        defaultValue={defaultValue}
+        onBlur={(e) => {
+          if (e.currentTarget.value !== defaultValue) onCommit(e.currentTarget.value);
+        }}
+        className="h-9 text-sm"
+      />
+    </label>
   );
 }
