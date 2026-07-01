@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
-import { LogOut, Plus, Search, UserRound, Pencil, PlayCircle } from "lucide-react";
+import { FileSpreadsheet, Link as LinkIcon, LogOut, Plus, Search, UserRound, Pencil, PlayCircle, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -13,10 +13,10 @@ import { useClient } from "@/components/client-context";
 type ClientRecord = {
   id: string;
   name: string;
-  email: string | null;
-  phone: string | null;
   goal: string | null;
   notes: string | null;
+  liveSheetType: string | null;
+  liveSheetUrl: string | null;
   status: string;
   user: { username: string } | null;
 };
@@ -25,10 +25,9 @@ const emptyForm = {
   name: "",
   username: "",
   password: "",
-  email: "",
-  phone: "",
   goal: "",
   notes: "",
+  liveSheetUrl: "",
 };
 
 export default function TrainerDashboard() {
@@ -40,6 +39,7 @@ export default function TrainerDashboard() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<ClientRecord | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const [dataFile, setDataFile] = useState<File | null>(null);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -61,7 +61,7 @@ export default function TrainerDashboard() {
     const q = query.trim().toLowerCase();
     if (!q) return clients;
     return clients.filter((client) =>
-      [client.name, client.email, client.phone, client.goal, client.user?.username]
+      [client.name, client.goal, client.liveSheetUrl, client.user?.username]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(q)),
     );
@@ -70,6 +70,7 @@ export default function TrainerDashboard() {
   const openNew = () => {
     setEditing(null);
     setForm(emptyForm);
+    setDataFile(null);
     setError("");
     setDialogOpen(true);
   };
@@ -80,11 +81,11 @@ export default function TrainerDashboard() {
       name: client.name,
       username: client.user?.username || "",
       password: "",
-      email: client.email || "",
-      phone: client.phone || "",
       goal: client.goal || "",
       notes: client.notes || "",
+      liveSheetUrl: client.liveSheetUrl || "",
     });
+    setDataFile(null);
     setError("");
     setDialogOpen(true);
   };
@@ -92,7 +93,10 @@ export default function TrainerDashboard() {
   const save = async () => {
     setSaving(true);
     setError("");
-    const payload = { ...form };
+    const payload = {
+      ...form,
+      liveSheetType: form.liveSheetUrl.trim() ? "google_sheets" : dataFile ? "excel_upload" : "",
+    };
     if (editing && !payload.password) {
       delete (payload as Partial<typeof payload>).password;
     }
@@ -104,6 +108,22 @@ export default function TrainerDashboard() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Opslaan mislukt");
+
+      const savedClientId = editing?.id || data.client?.id || data.id;
+      if (dataFile && savedClientId) {
+        const formData = new FormData();
+        formData.append("file", dataFile);
+        const uploadRes = await apiFetch("/api/upload/excel", {
+          method: "POST",
+          headers: { "x-client-id": savedClientId },
+          body: formData,
+        });
+        const uploadData = await uploadRes.json().catch(() => ({}));
+        if (!uploadRes.ok) {
+          throw new Error(uploadData.error || "Klant opgeslagen, maar bestand uploaden is mislukt");
+        }
+      }
+
       setDialogOpen(false);
       await loadClients();
     } catch (err: any) {
@@ -158,6 +178,9 @@ export default function TrainerDashboard() {
                   <h2 className="font-black text-foreground truncate">{client.name}</h2>
                   <p className="text-xs text-muted-foreground truncate">{client.goal || "Geen doel ingevuld"}</p>
                   <p className="text-xs font-semibold text-primary mt-1">Login: {client.user?.username || "nog geen account"}</p>
+                  <p className="text-xs text-muted-foreground mt-1 truncate">
+                    {client.liveSheetUrl ? "Live Google Sheet gekoppeld" : client.liveSheetType === "excel_upload" ? "Excel-bestand geupload" : "Nog geen schema gekoppeld"}
+                  </p>
                 </div>
               </div>
               <div className="flex gap-2 mt-4">
@@ -185,11 +208,37 @@ export default function TrainerDashboard() {
               <Field label="Gebruikersnaam" value={form.username} onChange={(username) => setForm((f) => ({ ...f, username }))} />
               <Field label={editing ? "Nieuw wachtwoord" : "Wachtwoord"} value={form.password} onChange={(password) => setForm((f) => ({ ...f, password }))} type="password" />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="E-mail" value={form.email} onChange={(email) => setForm((f) => ({ ...f, email }))} />
-              <Field label="Telefoon" value={form.phone} onChange={(phone) => setForm((f) => ({ ...f, phone }))} />
-            </div>
             <Field label="Doel" value={form.goal} onChange={(goal) => setForm((f) => ({ ...f, goal }))} />
+            <div className="space-y-1.5">
+              <Label className="flex items-center gap-1.5">
+                <LinkIcon className="h-3.5 w-3.5" />
+                Live Google Sheet-link
+              </Label>
+              <Input
+                value={form.liveSheetUrl}
+                onChange={(e) => setForm((f) => ({ ...f, liveSheetUrl: e.target.value }))}
+                placeholder="https://docs.google.com/spreadsheets/d/..."
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Gebruik dit voor live bijwerken. Een lokaal Excel-bestand kan via upload worden gekoppeld.
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="flex items-center gap-1.5">
+                <FileSpreadsheet className="h-3.5 w-3.5" />
+                Excel-bestand uploaden
+              </Label>
+              <label className="flex h-11 cursor-pointer items-center justify-center rounded-md border border-border bg-background px-3 text-sm font-semibold hover:bg-secondary">
+                <Upload className="h-4 w-4 mr-2" />
+                {dataFile ? dataFile.name : "Kies .xlsx bestand"}
+                <input
+                  type="file"
+                  accept=".xlsx,.xls"
+                  className="hidden"
+                  onChange={(event) => setDataFile(event.target.files?.[0] ?? null)}
+                />
+              </label>
+            </div>
             <div className="space-y-1.5">
               <Label>Notities</Label>
               <Textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} />

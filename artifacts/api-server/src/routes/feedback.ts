@@ -6,6 +6,8 @@ import { getFeedbackQuestions, getFeedbackAnswers } from "../services/dataServic
 import { eq, and } from "drizzle-orm";
 import { logger } from "../lib/logger.js";
 import { getScopedClientId } from "../lib/auth.js";
+import { getClientLiveSheet } from "../services/clientSheetService.js";
+import { writeFeedbackToSheet } from "../services/sheetsParser.js";
 
 const router = Router();
 
@@ -123,6 +125,13 @@ router.post("/", async (req, res) => {
         .values({ weekNumber, clientId, questionId, answer })
         .returning();
       result = created;
+    }
+
+    try {
+      const liveSheet = await getClientLiveSheet(clientId);
+      await writeFeedbackToSheet(weekNumber, questionId, answer, liveSheet.spreadsheetId);
+    } catch (e) {
+      req.log.warn({ err: e }, "Failed to write feedback to live sheet");
     }
 
     return void res.status(201).json(result);

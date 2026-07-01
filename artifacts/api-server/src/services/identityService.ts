@@ -61,11 +61,18 @@ export async function ensureIdentitySchema(): Promise<void> {
       phone text,
       goal text,
       notes text,
+      live_sheet_type text,
+      live_sheet_url text,
+      live_sheet_id text,
       status text NOT NULL DEFAULT 'active',
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now()
     )
   `);
+
+  await db.execute(sql`ALTER TABLE clients ADD COLUMN IF NOT EXISTS live_sheet_type text`);
+  await db.execute(sql`ALTER TABLE clients ADD COLUMN IF NOT EXISTS live_sheet_url text`);
+  await db.execute(sql`ALTER TABLE clients ADD COLUMN IF NOT EXISTS live_sheet_id text`);
 
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS users (
@@ -185,6 +192,9 @@ export async function createClientWithUser(input: {
   phone?: string | null;
   goal?: string | null;
   notes?: string | null;
+  liveSheetType?: string | null;
+  liveSheetUrl?: string | null;
+  liveSheetId?: string | null;
 }): Promise<{ client: typeof clientsTable.$inferSelect; user: AuthUser }> {
   const clientId = randomId("client");
   const userId = randomId("user");
@@ -199,6 +209,9 @@ export async function createClientWithUser(input: {
       phone: input.phone || null,
       goal: input.goal || null,
       notes: input.notes || null,
+      liveSheetType: input.liveSheetType || null,
+      liveSheetUrl: input.liveSheetUrl || null,
+      liveSheetId: input.liveSheetId || null,
       status: "active",
     })
     .returning();

@@ -6,6 +6,7 @@ import { eq, and } from "drizzle-orm";
 import { getWorkoutById } from "../services/dataService.js";
 import { writeExerciseLogToSheet } from "../services/sheetsParser.js";
 import { getScopedClientId } from "../lib/auth.js";
+import { getClientLiveSheet } from "../services/clientSheetService.js";
 
 const router = Router();
 
@@ -94,7 +95,8 @@ router.post("/", async (req, res) => {
       const workout = getWorkoutById(workoutId, clientId);
       const exerciseName = workout?.exercises.find(e => e.id === exerciseId)?.name || exerciseId;
       const workoutName = workout?.name || workoutId;
-      await writeExerciseLogToSheet(weekNumber, workoutName, exerciseName, sets ?? null, reps ?? null, log.weight, notes ?? null);
+      const liveSheet = await getClientLiveSheet(clientId);
+      await writeExerciseLogToSheet(weekNumber, workoutName, exerciseName, sets ?? null, reps ?? null, log.weight, notes ?? null, liveSheet.spreadsheetId);
     } catch (e) {
       req.log.warn({ err: e }, "Failed to write to sheets");
     }
@@ -141,7 +143,8 @@ router.put("/:id", async (req, res) => {
       const workout = getWorkoutById(updated.workoutId, clientId);
       const exerciseName = workout?.exercises.find(e => e.id === updated.exerciseId)?.name || updated.exerciseId;
       const workoutName = workout?.name || updated.workoutId;
-      await writeExerciseLogToSheet(updated.weekNumber, workoutName, exerciseName, updated.sets ?? null, updated.reps ?? null, updated.weight, updated.notes ?? null);
+      const liveSheet = await getClientLiveSheet(clientId);
+      await writeExerciseLogToSheet(updated.weekNumber, workoutName, exerciseName, updated.sets ?? null, updated.reps ?? null, updated.weight, updated.notes ?? null, liveSheet.spreadsheetId);
     } catch (e) {
       req.log.warn({ err: e }, "Failed to write to sheets");
     }

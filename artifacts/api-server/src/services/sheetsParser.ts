@@ -276,7 +276,8 @@ export async function writeExerciseLogToSheet(
   sets: number | null,
   reps: string | null,
   weight: string | null,
-  notes: string | null
+  notes: string | null,
+  spreadsheetId?: string | null
 ): Promise<void> {
   const { appendRow, readRange, writeRange } = await import("./sheetsService.js");
   
@@ -294,12 +295,12 @@ export async function writeExerciseLogToSheet(
       notes || "",
       ...weightArr
     ],
-  ]);
+  ], spreadsheetId);
 
   // 2. Try to update the exact row in the Week tab
   try {
     const sheetName = `Week ${weekNumber}`;
-    const data = await readRange(`${sheetName}!A1:Z200`);
+    const data = await readRange(`${sheetName}!A1:Z200`, spreadsheetId);
     if (!data) return;
 
     let headerRowIndex = -1;
@@ -349,7 +350,7 @@ export async function writeExerciseLogToSheet(
       }
 
       const rowNum = exerciseRowIndex + 1;
-      await writeRange(`${sheetName}!A${rowNum}:Z${rowNum}`, [rowToUpdate]);
+      await writeRange(`${sheetName}!A${rowNum}:Z${rowNum}`, [rowToUpdate], spreadsheetId);
     }
   } catch (err) {
     logger.error({ err }, "Failed to update week tab");
@@ -360,11 +361,100 @@ export async function writeExerciseLogToSheet(
 export async function writeFeedbackToSheet(
   weekNumber: number,
   questionId: number,
-  answer: string
+  answer: string,
+  spreadsheetId?: string | null
 ): Promise<void> {
   const { appendRow } = await import("./sheetsService.js");
   const now = new Date().toLocaleDateString("nl-NL");
   await appendRow("Feedback!H:K", [
     [String(weekNumber), String(questionId), answer, now],
-  ]);
+  ], spreadsheetId);
+}
+
+export async function writeNutritionEntryToSheet(
+  weekNumber: number,
+  dayLabel: string,
+  kcal: number | null,
+  notes: string | null,
+  spreadsheetId?: string | null
+): Promise<void> {
+  const { appendRow, readRange, writeRange } = await import("./sheetsService.js");
+  let metrics: Record<string, string> = {};
+  let text = "";
+  try {
+    if (notes?.startsWith("{")) {
+      const parsed = JSON.parse(notes);
+      metrics = parsed.metrics || {};
+      text = parsed.text || "";
+    } else {
+      text = notes || "";
+    }
+  } catch {
+    text = notes || "";
+  }
+
+  await appendRow("Logboek!A:Z", [[
+    String(weekNumber),
+    "Dagboek",
+    dayLabel,
+    kcal !== null ? String(kcal) : "",
+    metrics.lichaamsgewicht || "",
+    metrics.buikomvang || "",
+    metrics.heupomvang || "",
+    metrics.energieNiveau || "",
+    metrics.slaapUren || "",
+    metrics.stressNiveau || "",
+    metrics.stappen || "",
+    text,
+  ]], spreadsheetId);
+
+  try {
+    const data = await readRange("Progressie!A1:Z400", spreadsheetId);
+    if (!data) return;
+
+    let currentWeek: number | null = null;
+    let targetRow = -1;
+    let headerRow: string[] = [];
+    const dayLower = dayLabel.toLowerCase();
+
+    for (let i = 0; i < data.length; i++) {
+      const first = String(data[i][0] || "").trim().toLowerCase();
+      const weekMatch = first.match(/^week\s+(\d+)$/i);
+      if (weekMatch) {
+        currentWeek = parseInt(weekMatch[1], 10);
+        headerRow = data[i].map((cell) => String(cell || "").trim().toLowerCase());
+        continue;
+      }
+
+      if (currentWeek === weekNumber && first === dayLower) {
+        targetRow = i;
+        break;
+      }
+    }
+
+    if (targetRow < 0) return;
+
+    const rowToUpdate = [...data[targetRow]];
+    const setByHeader = (needle: string, value: string | number | null | undefined) => {
+      if (value === null || value === undefined || value === "") return;
+      const col = headerRow.findIndex((header) => header.includes(needle));
+      if (col < 0) return;
+      while (rowToUpdate.length <= col) rowToUpdate.push("");
+      rowToUpdate[col] = String(value);
+    };
+
+    setByHeader("kcal", kcal);
+    setByHeader("gewicht", metrics.lichaamsgewicht);
+    setByHeader("buikomvang", metrics.buikomvang);
+    setByHeader("heupomvang", metrics.heupomvang);
+    setByHeader("energie", metrics.energieNiveau);
+    setByHeader("slaap", metrics.slaapUren);
+    setByHeader("stress", metrics.stressNiveau);
+    setByHeader("stappen", metrics.stappen);
+
+    const rowNum = targetRow + 1;
+    await writeRange(`Progressie!A${rowNum}:Z${rowNum}`, [rowToUpdate], spreadsheetId);
+  } catch (err) {
+    logger.error({ err }, "Failed to update Progressie sheet");
+  }
 }

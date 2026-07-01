@@ -4,6 +4,7 @@ import { db } from "@workspace/db";
 import { clientsTable, usersTable } from "@workspace/db";
 import { createClientWithUser, hashPassword, publicUser } from "../services/identityService.js";
 import { requireTrainer } from "../lib/auth.js";
+import { extractGoogleSheetId } from "../services/clientSheetService.js";
 
 const router = Router();
 
@@ -45,6 +46,9 @@ router.post("/", async (req, res) => {
       phone: req.body?.phone ? String(req.body.phone).trim() : null,
       goal: req.body?.goal ? String(req.body.goal).trim() : null,
       notes: req.body?.notes ? String(req.body.notes).trim() : null,
+      liveSheetType: req.body?.liveSheetType ? String(req.body.liveSheetType).trim() : null,
+      liveSheetUrl: req.body?.liveSheetUrl ? String(req.body.liveSheetUrl).trim() : null,
+      liveSheetId: extractGoogleSheetId(req.body?.liveSheetUrl ? String(req.body.liveSheetUrl) : null),
     });
 
     return void res.status(201).json(result);
@@ -68,6 +72,9 @@ router.put("/:clientId", async (req, res) => {
         phone: req.body?.phone !== undefined ? String(req.body.phone || "").trim() || null : undefined,
         goal: req.body?.goal !== undefined ? String(req.body.goal || "").trim() || null : undefined,
         notes: req.body?.notes !== undefined ? String(req.body.notes || "").trim() || null : undefined,
+        liveSheetType: req.body?.liveSheetType !== undefined ? String(req.body.liveSheetType || "").trim() || null : undefined,
+        liveSheetUrl: req.body?.liveSheetUrl !== undefined ? String(req.body.liveSheetUrl || "").trim() || null : undefined,
+        liveSheetId: req.body?.liveSheetUrl !== undefined ? extractGoogleSheetId(String(req.body.liveSheetUrl || "")) : undefined,
         status: req.body?.status ? String(req.body.status).trim() : undefined,
       })
       .where(eq(clientsTable.id, clientId))

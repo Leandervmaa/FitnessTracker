@@ -11,6 +11,10 @@ export interface SheetsStatus {
   spreadsheetNaam?: string;
 }
 
+function resolveSpreadsheetId(spreadsheetId?: string | null): string {
+  return spreadsheetId || process.env.GOOGLE_SPREADSHEET_ID || SPREADSHEET_ID;
+}
+
 function getAccessToken(): string | null {
   return process.env.GOOGLE_ACCESS_TOKEN || null;
 }
@@ -19,19 +23,20 @@ export function isConnected(): boolean {
   return !!getAccessToken();
 }
 
-export async function getSheetsStatus(): Promise<SheetsStatus> {
+export async function getSheetsStatus(spreadsheetId?: string | null): Promise<SheetsStatus> {
   const token = getAccessToken();
+  const resolvedSpreadsheetId = resolveSpreadsheetId(spreadsheetId);
   if (!token) {
     return {
       status: "niet_geautoriseerd",
       bericht:
         "Google Sheets is nog niet gekoppeld. Volg de instructies op de verbindingspagina om je spreadsheet te koppelen.",
-      spreadsheetId: SPREADSHEET_ID,
+      spreadsheetId: resolvedSpreadsheetId,
     };
   }
 
   try {
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}?fields=properties.title`;
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${resolvedSpreadsheetId}?fields=properties.title`;
     const resp = await fetch(url, {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -41,7 +46,7 @@ export async function getSheetsStatus(): Promise<SheetsStatus> {
         status: "niet_geautoriseerd",
         bericht:
           "Het toegangstoken is verlopen of ongeldig. Koppel Google Sheets opnieuw via de verbindingspagina.",
-        spreadsheetId: SPREADSHEET_ID,
+        spreadsheetId: resolvedSpreadsheetId,
       };
     }
 
@@ -49,7 +54,7 @@ export async function getSheetsStatus(): Promise<SheetsStatus> {
       return {
         status: "fout",
         bericht: `Google Sheets API fout (${resp.status}). Controleer de instellingen.`,
-        spreadsheetId: SPREADSHEET_ID,
+        spreadsheetId: resolvedSpreadsheetId,
       };
     }
 
@@ -57,7 +62,7 @@ export async function getSheetsStatus(): Promise<SheetsStatus> {
     return {
       status: "verbonden",
       bericht: "Succesvol verbonden met Google Sheets.",
-      spreadsheetId: SPREADSHEET_ID,
+      spreadsheetId: resolvedSpreadsheetId,
       spreadsheetNaam: data.properties?.title,
     };
   } catch (err) {
@@ -66,17 +71,18 @@ export async function getSheetsStatus(): Promise<SheetsStatus> {
       status: "fout",
       bericht:
         "Kan Google Sheets niet bereiken. Controleer de internetverbinding.",
-      spreadsheetId: SPREADSHEET_ID,
+      spreadsheetId: resolvedSpreadsheetId,
     };
   }
 }
 
-export async function readRange(sheetRange: string): Promise<string[][] | null> {
+export async function readRange(sheetRange: string, spreadsheetId?: string | null): Promise<string[][] | null> {
   const token = getAccessToken();
   if (!token) return null;
+  const resolvedSpreadsheetId = resolveSpreadsheetId(spreadsheetId);
 
   try {
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(sheetRange)}`;
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${resolvedSpreadsheetId}/values/${encodeURIComponent(sheetRange)}`;
     const resp = await fetch(url, {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -96,13 +102,15 @@ export async function readRange(sheetRange: string): Promise<string[][] | null> 
 
 export async function writeRange(
   sheetRange: string,
-  values: string[][]
+  values: string[][],
+  spreadsheetId?: string | null
 ): Promise<boolean> {
   const token = getAccessToken();
   if (!token) return false;
+  const resolvedSpreadsheetId = resolveSpreadsheetId(spreadsheetId);
 
   try {
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(sheetRange)}?valueInputOption=USER_ENTERED`;
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${resolvedSpreadsheetId}/values/${encodeURIComponent(sheetRange)}?valueInputOption=USER_ENTERED`;
     const resp = await fetch(url, {
       method: "PUT",
       headers: {
@@ -125,13 +133,15 @@ export async function writeRange(
 
 export async function appendRow(
   sheetRange: string,
-  values: string[][]
+  values: string[][],
+  spreadsheetId?: string | null
 ): Promise<boolean> {
   const token = getAccessToken();
   if (!token) return false;
+  const resolvedSpreadsheetId = resolveSpreadsheetId(spreadsheetId);
 
   try {
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(sheetRange)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${resolvedSpreadsheetId}/values/${encodeURIComponent(sheetRange)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
     const resp = await fetch(url, {
       method: "POST",
       headers: {

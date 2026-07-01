@@ -3,8 +3,9 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
-import { parseExcelFile, EXCEL_PATH } from "../services/excelParser.js";
+import { parseExcelFile, EXCEL_PATH, getExcelPath } from "../services/excelParser.js";
 import XLSX from "xlsx";
+import { getScopedClientId, requireTrainer } from "../lib/auth.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -15,7 +16,7 @@ if (!fs.existsSync(dataDir)) {
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, dataDir),
-  filename: (_req, _file, cb) => cb(null, "programma.xlsx"),
+  filename: (req, _file, cb) => cb(null, path.basename(getExcelPath(getScopedClientId(req)))),
 });
 
 const upload = multer({
@@ -34,12 +35,13 @@ const upload = multer({
 
 const router = Router();
 
-router.post("/excel", upload.single("file"), (req, res) => {
+router.post("/excel", requireTrainer, upload.single("file"), (req, res) => {
   if (!req.file) {
     return void res.status(400).json({ error: "Geen Excel-bestand ontvangen. Stuur een .xlsx bestand mee." });
   }
 
-  const result = parseExcelFile(EXCEL_PATH);
+  const excelPath = getExcelPath(getScopedClientId(req));
+  const result = parseExcelFile(excelPath);
   if (!result) {
     return void res.status(422).json({
       error: "Bestand ontvangen maar kon niet worden geparsed. Controleer of het het juiste Excel-bestand is.",
@@ -55,27 +57,30 @@ router.post("/excel", upload.single("file"), (req, res) => {
   });
 });
 
-router.delete("/excel", (_req, res) => {
-  if (fs.existsSync(EXCEL_PATH)) {
-    fs.unlinkSync(EXCEL_PATH);
+router.delete("/excel", requireTrainer, (req, res) => {
+  const excelPath = getExcelPath(getScopedClientId(req));
+  if (fs.existsSync(excelPath)) {
+    fs.unlinkSync(excelPath);
     res.json({ bericht: "Excel-bestand verwijderd. App gebruikt nu demodata." });
   } else {
     res.status(404).json({ error: "Geen Excel-bestand aanwezig." });
   }
 });
 
-router.get("/excel/download", (_req, res) => {
-  if (fs.existsSync(EXCEL_PATH)) {
-    res.download(EXCEL_PATH, "Fitness_Progressie.xlsx");
+router.get("/excel/download", (req, res) => {
+  const excelPath = getExcelPath(getScopedClientId(req));
+  if (fs.existsSync(excelPath)) {
+    res.download(excelPath, "Fitness_Progressie.xlsx");
   } else {
     res.status(404).json({ error: "Geen Excel-bestand aanwezig." });
   }
 });
 
-router.get("/excel/json", (_req, res) => {
-  if (fs.existsSync(EXCEL_PATH)) {
+router.get("/excel/json", (req, res) => {
+  const excelPath = getExcelPath(getScopedClientId(req));
+  if (fs.existsSync(excelPath)) {
     try {
-      const wb = XLSX.readFile(EXCEL_PATH);
+      const wb = XLSX.readFile(excelPath);
       const data: Record<string, string[][]> = {};
       for (const sheetName of wb.SheetNames) {
         const sheet = wb.Sheets[sheetName];

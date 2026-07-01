@@ -5,6 +5,8 @@ import { CreateNutritionEntryBody, UpdateNutritionEntryBody, UpdateNutritionEntr
 import { getNutritionTarget, getProgressieWeek } from "../services/dataService.js";
 import { eq, and } from "drizzle-orm";
 import { getScopedClientId } from "../lib/auth.js";
+import { getClientLiveSheet } from "../services/clientSheetService.js";
+import { writeNutritionEntryToSheet } from "../services/sheetsParser.js";
 
 const router = Router();
 
@@ -140,6 +142,13 @@ router.post("/", async (req, res) => {
       entry = created;
     }
 
+    try {
+      const liveSheet = await getClientLiveSheet(clientId);
+      await writeNutritionEntryToSheet(weekNumber, dayLabel, kcal ?? null, notes ?? null, liveSheet.spreadsheetId);
+    } catch (e) {
+      req.log.warn({ err: e }, "Failed to write nutrition to live sheet");
+    }
+
     return void res.status(201).json({
       ...entry,
       kcal: entry.kcal ? parseFloat(entry.kcal) : null,
@@ -185,6 +194,13 @@ router.put("/:id", async (req, res) => {
 
     if (!updated) {
       return res.status(404).json({ error: "Voedingsinvoer niet gevonden" });
+    }
+
+    try {
+      const liveSheet = await getClientLiveSheet(clientId);
+      await writeNutritionEntryToSheet(updated.weekNumber, updated.dayLabel, updated.kcal ? parseFloat(updated.kcal) : null, updated.notes, liveSheet.spreadsheetId);
+    } catch (e) {
+      req.log.warn({ err: e }, "Failed to write nutrition update to live sheet");
     }
 
     return void res.json({
