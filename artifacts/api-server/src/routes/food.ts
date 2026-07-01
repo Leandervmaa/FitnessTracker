@@ -10,6 +10,7 @@ import { searchFoodsOFF, getFoodDetailOFF, searchByBarcodeOFF } from "../service
 //   AND the Replit server IP whitelisted at platform.fatsecret.com)
 import { searchFoods as searchFoodsFS, getFoodDetail as getFoodDetailFS, searchByBarcode as searchByBarcodeFS } from "../services/fatSecretService.js";
 import { notifyClients } from "./sync.js";
+import { getScopedClientId } from "../lib/auth.js";
 
 const router = Router();
 
@@ -76,6 +77,7 @@ router.get("/barcode", async (req, res) => {
 router.get("/logs", async (req, res) => {
   const weekNumber = parseInt(String(req.query.weekNumber || ""), 10);
   const day = String(req.query.day || "").trim();
+  const clientId = getScopedClientId(req);
 
   if (isNaN(weekNumber) || !day) {
     return void res.status(400).json({ error: "weekNumber en day zijn vereist" });
@@ -85,7 +87,7 @@ router.get("/logs", async (req, res) => {
     const logs = await db
       .select()
       .from(foodLogsTable)
-      .where(and(eq(foodLogsTable.weekNumber, weekNumber), eq(foodLogsTable.day, day)));
+      .where(and(eq(foodLogsTable.clientId, clientId), eq(foodLogsTable.weekNumber, weekNumber), eq(foodLogsTable.day, day)));
     return void res.json(logs);
   } catch (err) {
     req.log.error({ err }, "Failed to get food logs");
@@ -127,6 +129,7 @@ router.post("/logs", async (req, res) => {
     foodName, servingDescription, amountServings,
     kcal, eiwittenG, koolhydratenG, vetenG, vezelG,
   } = req.body;
+  const clientId = getScopedClientId(req);
 
   if (!weekNumber || !day || !fatSecretFoodId || !foodName) {
     return void res.status(400).json({ error: "Ongeldige invoer" });
@@ -137,6 +140,7 @@ router.post("/logs", async (req, res) => {
       .insert(foodLogsTable)
       .values({
         weekNumber: parseInt(weekNumber, 10),
+        clientId,
         day,
         fatSecretFoodId:   String(fatSecretFoodId),
         fatSecretServingId: String(fatSecretServingId),
@@ -150,7 +154,7 @@ router.post("/logs", async (req, res) => {
         vezelG:            vezelG != null ? String(parseFloat(vezelG)) : null,
       })
       .returning();
-    notifyClients("food_logs_updated", { weekNumber, day });
+    notifyClients("food_logs_updated", { clientId, weekNumber, day });
     return void res.status(201).json(log);
   } catch (err) {
     req.log.error({ err }, "Failed to insert food log");
@@ -162,14 +166,15 @@ router.post("/logs", async (req, res) => {
 router.delete("/logs/:id", async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) return void res.status(400).json({ error: "Ongeldig ID" });
+  const clientId = getScopedClientId(req);
 
   try {
     const [deleted] = await db
       .delete(foodLogsTable)
-      .where(eq(foodLogsTable.id, id))
+      .where(and(eq(foodLogsTable.id, id), eq(foodLogsTable.clientId, clientId)))
       .returning();
     if (!deleted) return void res.status(404).json({ error: "Log niet gevonden" });
-    notifyClients("food_logs_updated", { id });
+    notifyClients("food_logs_updated", { clientId, id });
     return void res.json({ ok: true });
   } catch (err) {
     req.log.error({ err }, "Failed to delete food log");

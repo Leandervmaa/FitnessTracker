@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { generateExportExcel } from "../services/excelWriter.js";
 import { logger } from "../lib/logger.js";
+import { getScopedClientId } from "../lib/auth.js";
 
 const router = Router();
 
@@ -12,7 +13,7 @@ const router = Router();
 router.get("/excel", async (req, res) => {
   try {
     logger.info("Generating Excel export...");
-    const buffer = await generateExportExcel();
+    const buffer = await generateExportExcel(getScopedClientId(req));
 
     const now = new Date();
     const dateStr = now.toISOString().slice(0, 10); // YYYY-MM-DD

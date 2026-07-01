@@ -11,10 +11,16 @@ import exportRouter from "./export";
 import progressPhotosRouter from "./progressPhotos";
 import foodRouter from "./food";
 import syncRouter from "./sync";
+import authRouter from "./auth";
+import clientsRouter from "./clients";
+import { requireAuth } from "../lib/auth";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
+router.use("/auth", authRouter);
+router.use(requireAuth);
+router.use("/clients", clientsRouter);
 router.use("/weeks", weeksRouter);
 router.use("/workouts", workoutsRouter);
 router.use("/exercise-logs", exerciseLogsRouter);

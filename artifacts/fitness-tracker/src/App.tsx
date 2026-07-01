@@ -3,10 +3,15 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { WeekProvider } from "@/components/week-context";
+import { AuthProvider, useAuth } from "@/components/auth-context";
+import { ClientProvider, useClient } from "@/components/client-context";
+import { TrainerClientBar } from "@/components/trainer-client-bar";
 import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 import NotFound from "@/pages/not-found";
 
 import Home from "@/pages/home";
+import LoginPage from "@/pages/login";
+import TrainerDashboard from "@/pages/trainer-dashboard";
 import TrainingList from "@/pages/trainingen/index";
 import TrainingDetail from "@/pages/trainingen/detail";
 import NutritionList from "@/pages/dagboek/index";
@@ -32,10 +37,22 @@ const queryClient = new QueryClient({
   },
 });
 
+function Landing() {
+  const { user } = useAuth();
+  const { activeClientId } = useClient();
+
+  if (user?.role === "trainer" && !activeClientId) {
+    return <TrainerDashboard />;
+  }
+
+  return <Home />;
+}
+
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={Home} />
+      <Route path="/" component={Landing} />
+      <Route path="/trainer" component={TrainerDashboard} />
       <Route path="/trainingen" component={TrainingList} />
       <Route path="/trainingen/:workoutId" component={TrainingDetail} />
       <Route path="/dagboek" component={NutritionList} />
@@ -59,15 +76,38 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <WeekProvider>
-          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-            <RealtimeSyncBridge />
-            <Router />
-          </WouterRouter>
-        </WeekProvider>
+        <AuthProvider>
+          <AuthShell />
+        </AuthProvider>
         <Toaster />
       </TooltipProvider>
     </QueryClientProvider>
+  );
+}
+
+function AuthShell() {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-[100dvh] flex items-center justify-center bg-background">
+        <div className="w-8 h-8 rounded-full border-4 border-primary border-t-transparent animate-spin" />
+      </div>
+    );
+  }
+
+  if (!user) return <LoginPage />;
+
+  return (
+    <ClientProvider>
+      <WeekProvider>
+        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+          <RealtimeSyncBridge />
+          <TrainerClientBar />
+          <Router />
+        </WouterRouter>
+      </WeekProvider>
+    </ClientProvider>
   );
 }
 

@@ -2,13 +2,15 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { exerciseLogsTable } from "@workspace/db";
 import { getWorkoutById, getWeek } from "../services/dataService.js";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { getScopedClientId } from "../lib/auth.js";
 
 const router = Router();
 
 router.get("/:workoutId", async (req, res) => {
   try {
     const { workoutId } = req.params;
+    const clientId = getScopedClientId(req);
     const workout = getWorkoutById(workoutId);
 
     if (!workout) return void res.status(404).json({ error: "Training niet gevonden" });
@@ -20,7 +22,7 @@ router.get("/:workoutId", async (req, res) => {
       const previousLogs = await db
         .select()
         .from(exerciseLogsTable)
-        .where(eq(exerciseLogsTable.weekNumber, prevWeekNumber));
+        .where(and(eq(exerciseLogsTable.clientId, clientId), eq(exerciseLogsTable.weekNumber, prevWeekNumber)));
 
       for (const log of previousLogs) {
         prevLogMap.set(log.exerciseId, log);

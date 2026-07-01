@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
+import { apiFetch } from "@/lib/api";
 
 const PHOTO_WEEKS = new Set([1, 4, 7, 10, 13, 16, 20, 23, 26]);
 
@@ -21,7 +22,7 @@ interface DataStatus {
 function useDataStatus() {
   const [status, setStatus] = useState<DataStatus | null>(null);
   useEffect(() => {
-    fetch("/api/data-status")
+    apiFetch("/api/data-status")
       .then((r) => r.json())
       .then(setStatus)
       .catch(() => setStatus(null));
@@ -108,7 +109,7 @@ export default function Home() {
     if (downloading) return;
     setDownloading(true);
     try {
-      const res = await fetch("/api/export/excel");
+      const res = await apiFetch("/api/export/excel");
       if (!res.ok) return;
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);

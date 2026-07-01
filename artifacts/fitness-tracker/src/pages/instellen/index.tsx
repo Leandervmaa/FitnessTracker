@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { ChevronLeft, Upload, CheckCircle2, XCircle, FileSpreadsheet, Trash2, RefreshCw, Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { apiFetch } from "@/lib/api";
 
 interface DataStatus {
   source: "excel" | "demo";
@@ -25,7 +26,7 @@ function useDataStatus() {
   const fetch_ = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/data-status");
+      const res = await apiFetch("/api/data-status");
       const data = await res.json();
       setStatus(data);
     } catch {
@@ -59,7 +60,7 @@ export default function Instellen() {
     formData.append("file", file);
 
     try {
-      const res = await fetch("/api/upload/excel", { method: "POST", body: formData });
+      const res = await apiFetch("/api/upload/excel", { method: "POST", body: formData });
       const data = await res.json();
       if (res.ok) {
         toast({
@@ -90,7 +91,7 @@ export default function Instellen() {
     if (!confirm("Weet je zeker dat je het Excel-bestand wilt verwijderen? De app gebruikt dan weer demodata.")) return;
     setDeleting(true);
     try {
-      const res = await fetch("/api/upload/excel", { method: "DELETE" });
+      const res = await apiFetch("/api/upload/excel", { method: "DELETE" });
       const data = await res.json();
       if (res.ok) {
         toast({ title: "Verwijderd", description: data.bericht });
@@ -108,7 +109,7 @@ export default function Instellen() {
   const handleDownload = async () => {
     setDownloading(true);
     try {
-      const res = await fetch("/api/export/excel");
+      const res = await apiFetch("/api/export/excel");
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         toast({

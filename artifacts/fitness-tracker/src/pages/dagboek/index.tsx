@@ -18,6 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import FoodTracker, { useFoodLogs } from "@/components/food-tracker";
+import { apiFetch } from "@/lib/api";
 
 const DAYS = [
   { id: "mon", label: "Ma", nl: "Maandag" },
@@ -64,7 +65,7 @@ function useProgressieWeek(weekNumber: number | undefined) {
     queryFn: async () => {
       if (!weekNumber) return null;
       try {
-        const res = await fetch(`/api/nutrition/progressie/${weekNumber}`);
+        const res = await apiFetch(`/api/nutrition/progressie/${weekNumber}`);
         if (!res.ok) return null;
         return await res.json();
       } catch {

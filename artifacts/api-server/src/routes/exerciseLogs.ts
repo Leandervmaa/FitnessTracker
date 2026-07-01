@@ -5,6 +5,7 @@ import { CreateExerciseLogBody, UpdateExerciseLogBody, UpdateExerciseLogParams, 
 import { eq, and } from "drizzle-orm";
 import { getWorkoutById } from "../services/dataService.js";
 import { writeExerciseLogToSheet } from "../services/sheetsParser.js";
+import { getScopedClientId } from "../lib/auth.js";
 
 const router = Router();
 
@@ -16,10 +17,11 @@ router.get("/", async (req, res) => {
     }
 
     const { exerciseId, weekNumber, workoutId } = parsed.data;
+    const clientId = getScopedClientId(req);
 
     let query = db.select().from(exerciseLogsTable).$dynamic();
 
-    const conditions = [];
+    const conditions = [eq(exerciseLogsTable.clientId, clientId)];
     if (exerciseId) conditions.push(eq(exerciseLogsTable.exerciseId, exerciseId));
     if (weekNumber !== undefined) conditions.push(eq(exerciseLogsTable.weekNumber, weekNumber));
     if (workoutId) conditions.push(eq(exerciseLogsTable.workoutId, workoutId));
@@ -44,6 +46,7 @@ router.post("/", async (req, res) => {
     }
 
     const { exerciseId, workoutId, weekNumber, sets, reps, weight, notes } = parsed.data;
+    const clientId = getScopedClientId(req);
 
     const existing = await db
       .select()
@@ -51,7 +54,8 @@ router.post("/", async (req, res) => {
       .where(
         and(
           eq(exerciseLogsTable.exerciseId, exerciseId),
-          eq(exerciseLogsTable.weekNumber, weekNumber)
+          eq(exerciseLogsTable.weekNumber, weekNumber),
+          eq(exerciseLogsTable.clientId, clientId)
         )
       );
 
@@ -74,6 +78,7 @@ router.post("/", async (req, res) => {
         .insert(exerciseLogsTable)
         .values({
           exerciseId,
+          clientId,
           workoutId,
           weekNumber,
           sets: sets ?? null,
@@ -114,6 +119,7 @@ router.put("/:id", async (req, res) => {
     }
 
     const { id } = paramsParsed.data;
+    const clientId = getScopedClientId(req);
     const { sets, reps, weight, notes } = bodyParsed.data;
 
     const [updated] = await db
@@ -124,7 +130,7 @@ router.put("/:id", async (req, res) => {
         weight: weight ?? null,
         notes: notes ?? null,
       })
-      .where(eq(exerciseLogsTable.id, id))
+      .where(and(eq(exerciseLogsTable.id, id), eq(exerciseLogsTable.clientId, clientId)))
       .returning();
 
     if (!updated) {

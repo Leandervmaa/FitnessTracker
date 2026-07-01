@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { apiFetch, getActiveClientId } from "@/lib/api";
 
 // Weeks where progress photos are taken
 const PHOTO_WEEKS = [1, 4, 7, 10, 13, 16, 20, 23, 26];
@@ -27,14 +28,15 @@ interface Photo {
 }
 
 function photoUrl(photo: Photo) {
-  return `/api/progress-photos/image/${photo.id}`;
+  const clientId = getActiveClientId();
+  return clientId ? `/api/progress-photos/image/${photo.id}?clientId=${encodeURIComponent(clientId)}` : `/api/progress-photos/image/${photo.id}`;
 }
 
 function useAllPhotos() {
   return useQuery<Photo[]>({
     queryKey: ["progress-photos"],
     queryFn: async () => {
-      const res = await fetch("/api/progress-photos");
+      const res = await apiFetch("/api/progress-photos");
       if (!res.ok) throw new Error("Failed to fetch photos");
       return res.json();
     },
@@ -50,7 +52,7 @@ function useUploadPhoto() {
       fd.append("photo", file);
       fd.append("weekNumber", String(weekNumber));
       fd.append("angle", angle);
-      const res = await fetch("/api/progress-photos", { method: "POST", body: fd });
+      const res = await apiFetch("/api/progress-photos", { method: "POST", body: fd });
       if (!res.ok) throw new Error((await res.json()).error || "Upload mislukt");
       return res.json() as Promise<Photo>;
     },
@@ -62,7 +64,7 @@ function useDeletePhoto() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: number) => {
-      const res = await fetch(`/api/progress-photos/${id}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/progress-photos/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Verwijderen mislukt");
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["progress-photos"] }),

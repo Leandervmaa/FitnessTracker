@@ -358,9 +358,16 @@ export async function customFetch<T = unknown>(
     }
   }
 
+  if (!headers.has("x-client-id") && typeof localStorage !== "undefined") {
+    const activeClientId = localStorage.getItem("fitness.activeClientId");
+    if (activeClientId) {
+      headers.set("x-client-id", activeClientId);
+    }
+  }
+
   const requestInfo = { method, url: resolveUrl(input) };
 
-  const response = await fetch(input, { ...init, method, headers });
+  const response = await fetch(input, { credentials: "include", ...init, method, headers });
 
   if (!response.ok) {
     const errorData = await parseErrorBody(response, method);

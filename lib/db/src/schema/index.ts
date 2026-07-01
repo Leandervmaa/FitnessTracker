@@ -3,3 +3,5 @@ export * from "./nutrition_entries";
 export * from "./feedback";
 export * from "./progress_photos";
 export * from "./food_logs";
+export * from "./clients";
+export * from "./users";

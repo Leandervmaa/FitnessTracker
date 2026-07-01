@@ -4,6 +4,7 @@ import { nutritionEntriesTable } from "@workspace/db";
 import { CreateNutritionEntryBody, UpdateNutritionEntryBody, UpdateNutritionEntryParams, GetNutritionEntriesQueryParams } from "@workspace/api-zod";
 import { getNutritionTarget, getProgressieWeek } from "../services/dataService.js";
 import { eq, and } from "drizzle-orm";
+import { getScopedClientId } from "../lib/auth.js";
 
 const router = Router();
 
@@ -52,10 +53,11 @@ router.get("/", async (req, res) => {
     }
 
     const { weekNumber, day } = parsed.data;
+    const clientId = getScopedClientId(req);
 
     let query = db.select().from(nutritionEntriesTable).$dynamic();
 
-    const conditions = [];
+    const conditions = [eq(nutritionEntriesTable.clientId, clientId)];
     if (weekNumber !== undefined) conditions.push(eq(nutritionEntriesTable.weekNumber, weekNumber));
     if (day) conditions.push(eq(nutritionEntriesTable.day, day));
 
@@ -89,6 +91,7 @@ router.post("/", async (req, res) => {
     }
 
     const { weekNumber, day, dayLabel, kcal, eiwittenG, koolhydratenG, vetenG, waterMl, notes } = parsed.data;
+    const clientId = getScopedClientId(req);
 
     const existing = await db
       .select()
@@ -96,7 +99,8 @@ router.post("/", async (req, res) => {
       .where(
         and(
           eq(nutritionEntriesTable.weekNumber, weekNumber),
-          eq(nutritionEntriesTable.day, day)
+          eq(nutritionEntriesTable.day, day),
+          eq(nutritionEntriesTable.clientId, clientId)
         )
       );
 
@@ -122,6 +126,7 @@ router.post("/", async (req, res) => {
         .insert(nutritionEntriesTable)
         .values({
           weekNumber,
+          clientId,
           day,
           dayLabel,
           kcal: kcal !== undefined && kcal !== null ? String(kcal) : null,
@@ -162,6 +167,7 @@ router.put("/:id", async (req, res) => {
     }
 
     const { id } = paramsParsed.data;
+    const clientId = getScopedClientId(req);
     const { kcal, eiwittenG, koolhydratenG, vetenG, waterMl, notes } = bodyParsed.data;
 
     const [updated] = await db
@@ -174,7 +180,7 @@ router.put("/:id", async (req, res) => {
         waterMl: waterMl !== undefined && waterMl !== null ? String(waterMl) : null,
         notes: notes ?? null,
       })
-      .where(eq(nutritionEntriesTable.id, id))
+      .where(and(eq(nutritionEntriesTable.id, id), eq(nutritionEntriesTable.clientId, clientId)))
       .returning();
 
     if (!updated) {

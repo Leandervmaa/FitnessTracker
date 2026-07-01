@@ -17,6 +17,7 @@
 
 import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useClient } from "@/components/client-context";
 
 const EVENT_TO_QUERY_KEYS: Record<string, string[][]> = {
   photos_updated:    [["progress-photos"]],
@@ -29,6 +30,7 @@ const EVENT_TO_QUERY_KEYS: Record<string, string[][]> = {
 
 export function useRealtimeSync() {
   const qc = useQueryClient();
+  const { activeClientId } = useClient();
   const esRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
@@ -39,7 +41,8 @@ export function useRealtimeSync() {
     function connect() {
       if (stopped) return;
 
-      const es = new EventSource("/api/sync/events");
+      const url = activeClientId ? `/api/sync/events?clientId=${encodeURIComponent(activeClientId)}` : "/api/sync/events";
+      const es = new EventSource(url);
       esRef.current = es;
 
       es.onopen = () => {
@@ -77,5 +80,5 @@ export function useRealtimeSync() {
       clearTimeout(retryTimer);
       esRef.current?.close();
     };
-  }, [qc]);
+  }, [qc, activeClientId]);
 }

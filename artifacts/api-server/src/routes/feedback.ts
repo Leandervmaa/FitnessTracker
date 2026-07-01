@@ -5,6 +5,7 @@ import { SaveFeedbackAnswerBody, GetFeedbackAnswersQueryParams } from "@workspac
 import { getFeedbackQuestions, getFeedbackAnswers } from "../services/dataService.js";
 import { eq, and } from "drizzle-orm";
 import { logger } from "../lib/logger.js";
+import { getScopedClientId } from "../lib/auth.js";
 
 const router = Router();
 
@@ -41,7 +42,7 @@ feedbackQuestionsRouter.get("/", async (req, res) => {
   }
 });
 
-async function syncAnswersForWeek(weekNumber: number) {
+async function syncAnswersForWeek(weekNumber: number, clientId: string) {
   try {
     const excelAnswers = getFeedbackAnswers().filter((a) => a.weekNumber === weekNumber);
     if (excelAnswers.length === 0) return;
@@ -49,13 +50,14 @@ async function syncAnswersForWeek(weekNumber: number) {
     const existing = await db
       .select()
       .from(feedbackAnswersTable)
-      .where(eq(feedbackAnswersTable.weekNumber, weekNumber));
+      .where(and(eq(feedbackAnswersTable.weekNumber, weekNumber), eq(feedbackAnswersTable.clientId, clientId)));
 
     for (const ea of excelAnswers) {
       const hasDbAnswer = existing.some((dbAns) => dbAns.questionId === ea.questionId);
       if (!hasDbAnswer) {
         await db.insert(feedbackAnswersTable).values({
           weekNumber,
+          clientId,
           questionId: ea.questionId,
           answer: ea.answer,
         });
@@ -73,11 +75,12 @@ router.get("/", async (req, res) => {
       return void res.status(400).json({ error: "Weeknummer is vereist" });
     }
     const { weekNumber } = parsed.data;
-    await syncAnswersForWeek(weekNumber);
+    const clientId = getScopedClientId(req);
+    await syncAnswersForWeek(weekNumber, clientId);
     const answers = await db
       .select()
       .from(feedbackAnswersTable)
-      .where(eq(feedbackAnswersTable.weekNumber, weekNumber));
+      .where(and(eq(feedbackAnswersTable.weekNumber, weekNumber), eq(feedbackAnswersTable.clientId, clientId)));
     return void res.json(answers);
   } catch (err) {
     req.log.error({ err }, "Failed to get feedback answers");
@@ -92,6 +95,7 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ error: "Ongeldige invoer" });
     }
     const { weekNumber, questionId, answer } = parsed.data;
+    const clientId = getScopedClientId(req);
 
     const existing = await db
       .select()
@@ -99,7 +103,8 @@ router.post("/", async (req, res) => {
       .where(
         and(
           eq(feedbackAnswersTable.weekNumber, weekNumber),
-          eq(feedbackAnswersTable.questionId, questionId)
+          eq(feedbackAnswersTable.questionId, questionId),
+          eq(feedbackAnswersTable.clientId, clientId)
         )
       );
 
@@ -115,7 +120,7 @@ router.post("/", async (req, res) => {
     } else {
       const [created] = await db
         .insert(feedbackAnswersTable)
-        .values({ weekNumber, questionId, answer })
+        .values({ weekNumber, clientId, questionId, answer })
         .returning();
       result = created;
     }

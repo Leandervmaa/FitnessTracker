@@ -10,6 +10,7 @@ export const feedbackQuestionsTable = pgTable("feedback_questions", {
 
 export const feedbackAnswersTable = pgTable("feedback_answers", {
   id: serial("id").primaryKey(),
+  clientId: text("client_id"),
   weekNumber: integer("week_number").notNull(),
   questionId: integer("question_id").notNull(),
   answer: text("answer").notNull(),

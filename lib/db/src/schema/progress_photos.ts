@@ -7,6 +7,7 @@ import { z } from "zod/v4";
 // (avoids filesystem ephemerality on Replit deployments)
 export const progressPhotosTable = pgTable("progress_photos", {
   id:          serial("id").primaryKey(),
+  clientId:    text("client_id"),
   weekNumber:  integer("week_number").notNull(),
   angle:       text("angle").notNull(),      // "front" | "side" | "back"
   filename:    text("filename").notNull(),    // original filename (for display)

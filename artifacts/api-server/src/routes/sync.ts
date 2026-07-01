@@ -8,6 +8,7 @@
  */
 
 import { Router, Request, Response } from "express";
+import { getScopedClientId } from "../lib/auth.js";
 
 const router = Router();
 
@@ -15,6 +16,7 @@ const router = Router();
 
 interface SseClient {
   id:  string;
+  clientId: string;
   res: Response;
 }
 
@@ -23,7 +25,9 @@ const clients = new Map<string, SseClient>();
 /** Broadcast a change event to all connected SSE clients. */
 export function notifyClients(event: string, data?: Record<string, unknown>) {
   const payload = JSON.stringify({ event, data, ts: Date.now() });
+  const eventClientId = typeof data?.clientId === "string" ? data.clientId : null;
   for (const client of clients.values()) {
+    if (eventClientId && client.clientId !== eventClientId) continue;
     try {
       client.res.write(`data: ${payload}\n\n`);
     } catch {
@@ -43,7 +47,8 @@ router.get("/events", (req: Request, res: Response) => {
   res.flushHeaders();
 
   const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  clients.set(id, { id, res });
+  const clientId = getScopedClientId(req);
+  clients.set(id, { id, clientId, res });
 
   // Send initial ping to confirm connection
   res.write(`data: ${JSON.stringify({ event: "connected", clientId: id, ts: Date.now() })}\n\n`);

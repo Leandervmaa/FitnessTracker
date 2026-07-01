@@ -18,6 +18,7 @@ import { exerciseLogsTable, nutritionEntriesTable, feedbackAnswersTable } from "
 import { logger } from "../lib/logger.js";
 import { EXCEL_PATH } from "./excelParser.js";
 import { getWorkoutById, getAllWeekNumbers, getWeek } from "./dataService.js";
+import { eq } from "drizzle-orm";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -45,8 +46,8 @@ function setCellValue(sheet: XLSX.WorkSheet, col: number, row: number, value: st
 
 // ─── exercise logs → Week sheets ─────────────────────────────────────────────
 
-async function writeExerciseLogsToWeekSheets(wb: XLSX.WorkBook): Promise<void> {
-  const allLogs = await db.select().from(exerciseLogsTable);
+async function writeExerciseLogsToWeekSheets(wb: XLSX.WorkBook, clientId: string): Promise<void> {
+  const allLogs = await db.select().from(exerciseLogsTable).where(eq(exerciseLogsTable.clientId, clientId));
   if (allLogs.length === 0) return;
 
   // Group logs by weekNumber
@@ -152,8 +153,8 @@ const DAYS_NL: Record<string, string> = {
   sun: "Zondag",
 };
 
-async function writeNutritionToProgressie(wb: XLSX.WorkBook): Promise<void> {
-  const entries = await db.select().from(nutritionEntriesTable);
+async function writeNutritionToProgressie(wb: XLSX.WorkBook, clientId: string): Promise<void> {
+  const entries = await db.select().from(nutritionEntriesTable).where(eq(nutritionEntriesTable.clientId, clientId));
   if (entries.length === 0) return;
 
   const sheetName = wb.SheetNames.find((n) => /progressie/i.test(n));
@@ -248,8 +249,8 @@ async function writeNutritionToProgressie(wb: XLSX.WorkBook): Promise<void> {
 
 // ─── feedback answers → Feedback sheet ───────────────────────────────────────
 
-async function writeFeedbackAnswers(wb: XLSX.WorkBook): Promise<void> {
-  const answers = await db.select().from(feedbackAnswersTable);
+async function writeFeedbackAnswers(wb: XLSX.WorkBook, clientId: string): Promise<void> {
+  const answers = await db.select().from(feedbackAnswersTable).where(eq(feedbackAnswersTable.clientId, clientId));
   if (answers.length === 0) return;
 
   const sheetName = wb.SheetNames.find((n) => /feedback/i.test(n));
@@ -310,7 +311,7 @@ async function writeFeedbackAnswers(wb: XLSX.WorkBook): Promise<void> {
  * Returns the workbook as a Buffer for download.
  * If no source Excel file exists, creates a fresh workbook.
  */
-export async function generateExportExcel(): Promise<Buffer> {
+export async function generateExportExcel(clientId: string): Promise<Buffer> {
   let wb: XLSX.WorkBook;
 
   if (fs.existsSync(EXCEL_PATH)) {
@@ -323,19 +324,19 @@ export async function generateExportExcel(): Promise<Buffer> {
   }
 
   try {
-    await writeExerciseLogsToWeekSheets(wb);
+    await writeExerciseLogsToWeekSheets(wb, clientId);
   } catch (err) {
     logger.warn({ err }, "Failed to write exercise logs to Excel");
   }
 
   try {
-    await writeNutritionToProgressie(wb);
+    await writeNutritionToProgressie(wb, clientId);
   } catch (err) {
     logger.warn({ err }, "Failed to write nutrition to Excel Progressie sheet");
   }
 
   try {
-    await writeFeedbackAnswers(wb);
+    await writeFeedbackAnswers(wb, clientId);
   } catch (err) {
     logger.warn({ err }, "Failed to write feedback to Excel");
   }

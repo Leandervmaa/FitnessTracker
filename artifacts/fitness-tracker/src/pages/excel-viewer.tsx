@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { ChevronLeft, FileSpreadsheet, Loader2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { apiFetch } from "@/lib/api";
 
 export default function ExcelViewer() {
   const [, setLocation] = useLocation();
@@ -11,7 +12,7 @@ export default function ExcelViewer() {
   const [activeSheet, setActiveSheet] = useState<string>("");
 
   useEffect(() => {
-    fetch("/api/upload/excel/json")
+    apiFetch("/api/upload/excel/json")
       .then((res) => {
         if (!res.ok) {
           throw new Error("Geen Excel-bestand aanwezig of er is een fout opgetreden bij het inladen.");

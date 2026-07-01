@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { apiFetch } from "@/lib/api";
 
 // Lazy-load scanner to avoid SSR issues
 const BarcodeScanner = lazy(() => import("./barcode-scanner"));
@@ -62,7 +63,7 @@ export function useFoodLogs(weekNumber: number | undefined, day: string) {
     queryKey: ["food-logs", weekNumber, day],
     queryFn: async () => {
       if (!weekNumber) return [];
-      const res = await fetch(`/api/food/logs?weekNumber=${weekNumber}&day=${day}`);
+      const res = await apiFetch(`/api/food/logs?weekNumber=${weekNumber}&day=${day}`);
       if (!res.ok) return [];
       return res.json();
     },
@@ -75,7 +76,7 @@ function useDeleteFoodLog() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: number) => {
-      const res = await fetch(`/api/food/logs/${id}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/food/logs/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Verwijderen mislukt");
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["food-logs"] }),
@@ -86,7 +87,7 @@ function useAddFoodLog() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (body: Record<string, unknown>) => {
-      const res = await fetch("/api/food/logs", {
+      const res = await apiFetch("/api/food/logs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -127,7 +128,7 @@ function AddFoodPanel({ weekNumber, day, dayLabel, initialFoodId, onClose }: Add
   const { data: searchData, isFetching: searching } = useQuery<{ results: FoodSearchResult[] } | { error: string }>({
     queryKey: ["food-search", debouncedQuery],
     queryFn: async () => {
-      const res = await fetch(`/api/food/search?q=${encodeURIComponent(debouncedQuery)}&max=25`);
+      const res = await apiFetch(`/api/food/search?q=${encodeURIComponent(debouncedQuery)}&max=25`);
       return res.json();
     },
     enabled: debouncedQuery.length >= 2 && !selectedFoodId,
@@ -139,7 +140,7 @@ function AddFoodPanel({ weekNumber, day, dayLabel, initialFoodId, onClose }: Add
   const { data: foodDetail, isFetching: loadingDetail } = useQuery<FoodDetail>({
     queryKey: ["food-detail", selectedFoodId],
     queryFn: async () => {
-      const res = await fetch(`/api/food/${selectedFoodId}`);
+      const res = await apiFetch(`/api/food/${selectedFoodId}`);
       if (!res.ok) throw new Error("Ophalen mislukt");
       return res.json();
     },
@@ -396,7 +397,7 @@ export default function FoodTracker({ weekNumber, day, dayLabel, sheetKcal, targ
     setShowScanner(false);
     setBarcodeLoadingId(barcode);
     try {
-      const res = await fetch(`/api/food/barcode?code=${encodeURIComponent(barcode)}`);
+      const res = await apiFetch(`/api/food/barcode?code=${encodeURIComponent(barcode)}`);
       if (!res.ok) {
         toast({ title: "Barcode niet herkend", description: `Code: ${barcode}`, variant: "destructive" });
         return;

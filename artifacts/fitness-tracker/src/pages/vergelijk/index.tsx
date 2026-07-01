@@ -12,6 +12,7 @@ import {
   getGetExerciseLogsQueryKey,
   getGetWorkoutsForWeekQueryKey
 } from "@workspace/api-client-react";
+import { apiFetch } from "@/lib/api";
 
 interface ProgressieDay {
   gewicht: number | null;
@@ -31,7 +32,7 @@ function useProgressieWeek(weekNumber: number) {
     queryFn: async () => {
       if (!weekNumber) return null;
       try {
-        const res = await fetch(`/api/nutrition/progressie/${weekNumber}`);
+        const res = await apiFetch(`/api/nutrition/progressie/${weekNumber}`);
         if (!res.ok) return null;
         return await res.json();
       } catch {

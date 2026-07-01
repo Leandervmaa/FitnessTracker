@@ -3,6 +3,8 @@ import { db } from "@workspace/db";
 import { exerciseLogsTable, nutritionEntriesTable, feedbackAnswersTable, progressPhotosTable } from "@workspace/db";
 import { getAllWeekNumbers, getWeek } from "../services/dataService.js";
 import { eq, and } from "drizzle-orm";
+import { getScopedClientId } from "../lib/auth.js";
+import { DEFAULT_CLIENT_ID } from "../services/identityService.js";
 
 const router = Router();
 
@@ -12,11 +14,11 @@ const QUESTIONS_COUNT  = 4;
 const PHOTO_ANGLES     = ["front", "side", "back"] as const;
 const PHOTO_WEEKS      = new Set([1, 4, 7, 10, 13, 16, 20, 23, 26]);
 
-async function buildWeekSummary(weekNumber: number) {
+async function buildWeekSummary(weekNumber: number, clientId: string) {
   const weekProgram = getWeek(weekNumber);
 
   // Weeks 1–14 are already finished — mark everything as complete
-  if (weekNumber <= 14) {
+  if (clientId === DEFAULT_CLIENT_ID && weekNumber <= 14) {
     return {
       weekNumber,
       label: `Week ${weekNumber}`,
@@ -34,11 +36,11 @@ async function buildWeekSummary(weekNumber: number) {
 
   // Week 15+ — check actual DB data
   const [logs, nutritionEntries, feedbackAnswers, photos] = await Promise.all([
-    db.select().from(exerciseLogsTable).where(eq(exerciseLogsTable.weekNumber, weekNumber)),
-    db.select().from(nutritionEntriesTable).where(eq(nutritionEntriesTable.weekNumber, weekNumber)),
-    db.select().from(feedbackAnswersTable).where(eq(feedbackAnswersTable.weekNumber, weekNumber)),
+    db.select().from(exerciseLogsTable).where(and(eq(exerciseLogsTable.clientId, clientId), eq(exerciseLogsTable.weekNumber, weekNumber))),
+    db.select().from(nutritionEntriesTable).where(and(eq(nutritionEntriesTable.clientId, clientId), eq(nutritionEntriesTable.weekNumber, weekNumber))),
+    db.select().from(feedbackAnswersTable).where(and(eq(feedbackAnswersTable.clientId, clientId), eq(feedbackAnswersTable.weekNumber, weekNumber))),
     PHOTO_WEEKS.has(weekNumber)
-      ? db.select().from(progressPhotosTable).where(eq(progressPhotosTable.weekNumber, weekNumber))
+      ? db.select().from(progressPhotosTable).where(and(eq(progressPhotosTable.clientId, clientId), eq(progressPhotosTable.weekNumber, weekNumber)))
       : Promise.resolve([]),
   ]);
 
@@ -74,7 +76,8 @@ async function buildWeekSummary(weekNumber: number) {
 router.get("/", async (req, res) => {
   try {
     const allWeekNumbers = getAllWeekNumbers();
-    const weeks = await Promise.all(allWeekNumbers.map(buildWeekSummary));
+    const clientId = getScopedClientId(req);
+    const weeks = await Promise.all(allWeekNumbers.map((weekNumber) => buildWeekSummary(weekNumber, clientId)));
     return void res.json(weeks);
   } catch (err) {
     req.log.error({ err }, "Failed to list weeks");
@@ -85,15 +88,16 @@ router.get("/", async (req, res) => {
 router.get("/current", async (req, res) => {
   try {
     const allWeekNumbers = getAllWeekNumbers();
+    const clientId = getScopedClientId(req);
     let currentWeek = allWeekNumbers[0];
 
     for (const weekNumber of allWeekNumbers) {
-      const summary = await buildWeekSummary(weekNumber);
+      const summary = await buildWeekSummary(weekNumber, clientId);
       currentWeek = weekNumber;
       if (!summary.isComplete) break;
     }
 
-    const summary = await buildWeekSummary(currentWeek);
+    const summary = await buildWeekSummary(currentWeek, clientId);
     return void res.json(summary);
   } catch (err) {
     req.log.error({ err }, "Failed to get current week");
@@ -107,12 +111,13 @@ router.get("/:weekNumber/workouts", async (req, res) => {
     if (isNaN(weekNumber)) return void res.status(400).json({ error: "Ongeldig weeknummer" });
 
     const weekProgram = getWeek(weekNumber);
+    const clientId = getScopedClientId(req);
     if (!weekProgram) return void res.status(404).json({ error: "Week niet gevonden" });
 
     const logs = await db
       .select()
       .from(exerciseLogsTable)
-      .where(eq(exerciseLogsTable.weekNumber, weekNumber));
+      .where(and(eq(exerciseLogsTable.clientId, clientId), eq(exerciseLogsTable.weekNumber, weekNumber)));
 
     const completedExerciseIds = new Set(logs.map((l) => l.exerciseId));
 
@@ -141,7 +146,7 @@ router.get("/:weekNumber/workout-status", async (req, res) => {
     const logs = await db
       .select()
       .from(exerciseLogsTable)
-      .where(eq(exerciseLogsTable.weekNumber, weekNumber));
+      .where(and(eq(exerciseLogsTable.clientId, getScopedClientId(req)), eq(exerciseLogsTable.weekNumber, weekNumber)));
 
     return void res.json({
       weekNumber,

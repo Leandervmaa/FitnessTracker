@@ -4,6 +4,7 @@ import { z } from "zod/v4";
 
 export const nutritionEntriesTable = pgTable("nutrition_entries", {
   id: serial("id").primaryKey(),
+  clientId: text("client_id"),
   weekNumber: integer("week_number").notNull(),
   day: text("day").notNull(),
   dayLabel: text("day_label").notNull(),

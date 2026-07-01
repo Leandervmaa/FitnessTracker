@@ -14,6 +14,7 @@ import { db } from "@workspace/db";
 import { progressPhotosTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { notifyClients } from "./sync.js";
+import { getScopedClientId } from "../lib/auth.js";
 
 // Memory storage — save directly to DB as base64, no filesystem needed
 const upload = multer({
@@ -50,6 +51,7 @@ const listColumns = {
 router.get("/", async (req, res) => {
   try {
     const weekParam = req.query.weekNumber;
+    const clientId = getScopedClientId(req);
 
     if (weekParam !== undefined) {
       const weekNumber = parseInt(String(weekParam), 10);
@@ -58,12 +60,12 @@ router.get("/", async (req, res) => {
       const photos = await db
         .select(listColumns)
         .from(progressPhotosTable)
-        .where(eq(progressPhotosTable.weekNumber, weekNumber));
+        .where(and(eq(progressPhotosTable.weekNumber, weekNumber), eq(progressPhotosTable.clientId, clientId)));
 
       return void res.json(photos);
     }
 
-    const photos = await db.select(listColumns).from(progressPhotosTable);
+    const photos = await db.select(listColumns).from(progressPhotosTable).where(eq(progressPhotosTable.clientId, clientId));
     return void res.json(photos);
   } catch (err) {
     req.log.error({ err }, "Failed to list progress photos");
@@ -79,12 +81,13 @@ router.get("/", async (req, res) => {
 router.get("/image/:id", async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) return void res.status(400).json({ error: "Ongeldig ID" });
+  const clientId = getScopedClientId(req);
 
   try {
     const [photo] = await db
       .select()
       .from(progressPhotosTable)
-      .where(eq(progressPhotosTable.id, id));
+      .where(and(eq(progressPhotosTable.id, id), eq(progressPhotosTable.clientId, clientId)));
 
     if (!photo) return void res.status(404).json({ error: "Foto niet gevonden" });
     if (!photo.photoData) return void res.status(404).json({ error: "Geen fotodata beschikbaar" });
@@ -108,6 +111,7 @@ router.post("/", upload.single("photo"), async (req, res) => {
   }
 
   const weekNumber = parseInt(String(req.body.weekNumber), 10);
+  const clientId = getScopedClientId(req);
   const angle = String(req.body.angle || "").toLowerCase() as Angle;
 
   if (isNaN(weekNumber) || weekNumber < 1) {
@@ -127,7 +131,8 @@ router.post("/", upload.single("photo"), async (req, res) => {
       .where(
         and(
           eq(progressPhotosTable.weekNumber, weekNumber),
-          eq(progressPhotosTable.angle, angle)
+          eq(progressPhotosTable.angle, angle),
+          eq(progressPhotosTable.clientId, clientId)
         )
       );
 
@@ -135,6 +140,7 @@ router.post("/", upload.single("photo"), async (req, res) => {
       .insert(progressPhotosTable)
       .values({
         weekNumber,
+        clientId,
         angle,
         filename:  req.file.originalname || `photo-${weekNumber}-${angle}.jpg`,
         mimeType:  req.file.mimetype,
@@ -142,7 +148,7 @@ router.post("/", upload.single("photo"), async (req, res) => {
       })
       .returning(listColumns);
 
-    notifyClients("photos_updated", { weekNumber, angle });
+    notifyClients("photos_updated", { clientId, weekNumber, angle });
     return void res.status(201).json(photo);
   } catch (err) {
     req.log.error({ err }, "Failed to save progress photo to DB");
@@ -154,16 +160,17 @@ router.post("/", upload.single("photo"), async (req, res) => {
 router.delete("/:id", async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) return void res.status(400).json({ error: "Ongeldig ID" });
+  const clientId = getScopedClientId(req);
 
   try {
     const [deleted] = await db
       .delete(progressPhotosTable)
-      .where(eq(progressPhotosTable.id, id))
+      .where(and(eq(progressPhotosTable.id, id), eq(progressPhotosTable.clientId, clientId)))
       .returning(listColumns);
 
     if (!deleted) return void res.status(404).json({ error: "Foto niet gevonden" });
 
-    notifyClients("photos_updated", { id });
+    notifyClients("photos_updated", { clientId, id });
     return void res.json({ ok: true });
   } catch (err) {
     req.log.error({ err }, "Failed to delete progress photo");
