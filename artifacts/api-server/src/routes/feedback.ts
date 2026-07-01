@@ -129,7 +129,9 @@ router.post("/", async (req, res) => {
 
     try {
       const liveSheet = await getClientLiveSheet(clientId);
-      await writeFeedbackToSheet(weekNumber, questionId, answer, liveSheet.spreadsheetId);
+      if (liveSheet.spreadsheetId) {
+        await writeFeedbackToSheet(weekNumber, questionId, answer, liveSheet.spreadsheetId);
+      }
     } catch (e) {
       req.log.warn({ err: e }, "Failed to write feedback to live sheet");
     }

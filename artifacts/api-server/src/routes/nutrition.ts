@@ -144,7 +144,9 @@ router.post("/", async (req, res) => {
 
     try {
       const liveSheet = await getClientLiveSheet(clientId);
-      await writeNutritionEntryToSheet(weekNumber, dayLabel, kcal ?? null, notes ?? null, liveSheet.spreadsheetId);
+      if (liveSheet.spreadsheetId) {
+        await writeNutritionEntryToSheet(weekNumber, dayLabel, kcal ?? null, notes ?? null, liveSheet.spreadsheetId);
+      }
     } catch (e) {
       req.log.warn({ err: e }, "Failed to write nutrition to live sheet");
     }
@@ -198,7 +200,9 @@ router.put("/:id", async (req, res) => {
 
     try {
       const liveSheet = await getClientLiveSheet(clientId);
-      await writeNutritionEntryToSheet(updated.weekNumber, updated.dayLabel, updated.kcal ? parseFloat(updated.kcal) : null, updated.notes, liveSheet.spreadsheetId);
+      if (liveSheet.spreadsheetId) {
+        await writeNutritionEntryToSheet(updated.weekNumber, updated.dayLabel, updated.kcal ? parseFloat(updated.kcal) : null, updated.notes, liveSheet.spreadsheetId);
+      }
     } catch (e) {
       req.log.warn({ err: e }, "Failed to write nutrition update to live sheet");
     }

@@ -5,3 +5,4 @@ export * from "./progress_photos";
 export * from "./food_logs";
 export * from "./clients";
 export * from "./users";
+export * from "./training_plans";

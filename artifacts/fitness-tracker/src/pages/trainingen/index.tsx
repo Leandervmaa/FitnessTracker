@@ -1,11 +1,25 @@
 import { useWeek } from "@/components/week-context";
 import { useGetWorkoutsForWeek, useGetWeekWorkoutStatus, getGetWorkoutsForWeekQueryKey, getGetWeekWorkoutStatusQueryKey } from "@workspace/api-client-react";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { ChevronLeft, CheckCircle2, PlayCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { WeekSelector } from "@/components/week-selector";
+import { apiFetch } from "@/lib/api";
+
+type PlannedWeek = {
+  workouts: Array<{
+    id: string;
+    name: string;
+    dayLabel: string;
+    exerciseCount: number;
+    completedCount: number;
+    plannedSetCount?: number;
+    completedSetCount?: number;
+  }>;
+};
 
 export default function TrainingList() {
   const { selectedWeek } = useWeek();
@@ -19,6 +33,19 @@ export default function TrainingList() {
     query: { queryKey: getGetWeekWorkoutStatusQueryKey(selectedWeek || 0), enabled: !!selectedWeek }
   });
 
+  const { data: plannedWeek, isLoading: isPlanningLoading } = useQuery<PlannedWeek>({
+    queryKey: ["planned-week", selectedWeek],
+    enabled: !!selectedWeek,
+    queryFn: async () => {
+      const res = await apiFetch(`/api/plans/week/${selectedWeek}`);
+      if (!res.ok) throw new Error("Weekplanning ophalen mislukt");
+      return res.json();
+    },
+  });
+
+  const visibleWorkouts = plannedWeek?.workouts?.length ? plannedWeek.workouts : workouts;
+  const loading = isLoading || isPlanningLoading;
+
   return (
     <div className="min-h-[100dvh] w-full bg-background flex flex-col items-center max-w-md mx-auto">
       <header className="w-full p-4 flex items-center border-b border-border sticky top-0 bg-background/80 backdrop-blur-md z-10">
@@ -30,7 +57,7 @@ export default function TrainingList() {
       </header>
 
       <div className="w-full p-6 flex flex-col gap-4">
-        {isLoading && (
+        {loading && (
           <>
             <Skeleton className="w-full h-32 rounded-xl" />
             <Skeleton className="w-full h-32 rounded-xl" />
@@ -39,7 +66,7 @@ export default function TrainingList() {
           </>
         )}
 
-        {workouts && workouts.map(workout => {
+        {visibleWorkouts && visibleWorkouts.map(workout => {
           const progress = workout.exerciseCount > 0 
             ? Math.round((workout.completedCount / workout.exerciseCount) * 100) 
             : 0;

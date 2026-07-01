@@ -59,6 +59,15 @@ interface ProgressieWeek {
   requestedFields?: string[];
 }
 
+interface AppNutritionTarget {
+  dayLabel: string;
+  kcal: number | null;
+  proteinG: number | null;
+  carbsG: number | null;
+  fatG: number | null;
+  waterMl: number | null;
+}
+
 function useProgressieWeek(weekNumber: number | undefined) {
   return useQuery<ProgressieWeek | null>({
     queryKey: ["progressie-week", weekNumber],
@@ -87,6 +96,14 @@ export default function DagboekPage() {
 
   const { data: progressieWeek } = useProgressieWeek(selectedWeek ?? undefined);
   const { data: nutritionTarget } = useGetNutritionTarget();
+  const { data: appNutritionTargets = [] } = useQuery<AppNutritionTarget[]>({
+    queryKey: ["nutrition-targets"],
+    queryFn: async () => {
+      const res = await apiFetch("/api/plans/nutrition-targets");
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
 
   const { data: entries } = useGetNutritionEntries(
     { weekNumber: selectedWeek || 0 },
@@ -132,9 +149,9 @@ export default function DagboekPage() {
       day: dayId,
       dayLabel: dayInfo?.nl || dayId,
       kcal:          totalKcal > 0 ? totalKcal : null,
-      eiwittenG:     null as number | null,
-      koolhydratenG: null as number | null,
-      vetenG:        null as number | null,
+      eiwittenG:     data.totalProteinG ?? null,
+      koolhydratenG: data.totalCarbsG ?? null,
+      vetenG:        data.totalFatG ?? null,
       waterMl:       null as number | null,
       notes: JSON.stringify({ metrics, text: data.notes || "" }),
     };
@@ -240,6 +257,7 @@ export default function DagboekPage() {
           {DAYS.map(day => {
             const entry = entries?.find(e => e.day === day.id);
             const sheetDay = sheetDays.find(d => d.dayId === day.id);
+            const dayTarget = appNutritionTargets.find(target => target.dayLabel === day.nl);
             return (
               <TabsContent key={day.id} value={day.id} className="mt-0">
                 <DagForm
@@ -247,7 +265,10 @@ export default function DagboekPage() {
                   weekNumber={selectedWeek!}
                   entry={entry}
                   sheetDay={sheetDay ?? null}
-                  targetKcal={nutritionTarget?.kcal ?? null}
+                  targetKcal={dayTarget?.kcal ?? nutritionTarget?.kcal ?? null}
+                  targetProteinG={dayTarget?.proteinG ?? null}
+                  targetCarbsG={dayTarget?.carbsG ?? null}
+                  targetFatG={dayTarget?.fatG ?? null}
                   onSave={(data) => handleSave(day.id, data)}
                   isSaving={createEntry.isPending || updateEntry.isPending}
                   requestedFields={progressieWeek?.requestedFields || []}
@@ -274,12 +295,15 @@ function parseEntry(entry: any) {
   return { metrics, notes };
 }
 
-function DagForm({ day, weekNumber, entry, sheetDay, targetKcal, onSave, isSaving, requestedFields }: {
+function DagForm({ day, weekNumber, entry, sheetDay, targetKcal, targetProteinG, targetCarbsG, targetFatG, onSave, isSaving, requestedFields }: {
   day: { id: string; label: string; nl: string };
   weekNumber: number;
   entry?: any;
   sheetDay: any | null;
   targetKcal: number | null;
+  targetProteinG: number | null;
+  targetCarbsG: number | null;
+  targetFatG: number | null;
   onSave: (data: any) => void;
   isSaving: boolean;
   requestedFields: string[];
@@ -336,6 +360,9 @@ function DagForm({ day, weekNumber, entry, sheetDay, targetKcal, onSave, isSavin
   const loggedKcal = Math.round(
     foodLogs.reduce((sum, l) => sum + parseFloat(l.kcal || "0"), 0)
   );
+  const loggedProteinG = Math.round(foodLogs.reduce((sum, l) => sum + parseFloat(l.eiwittenG || "0"), 0) * 10) / 10;
+  const loggedCarbsG = Math.round(foodLogs.reduce((sum, l) => sum + parseFloat(l.koolhydratenG || "0"), 0) * 10) / 10;
+  const loggedFatG = Math.round(foodLogs.reduce((sum, l) => sum + parseFloat(l.vetenG || "0"), 0) * 10) / 10;
 
   // This is the authoritative total — computed from live data, not callbacks
   const totalKcal = currentManualKcal + loggedKcal;
@@ -606,6 +633,9 @@ function DagForm({ day, weekNumber, entry, sheetDay, targetKcal, onSave, isSavin
             dayLabel={day.nl}
             sheetKcal={sheetDay?.kcal ?? null}
             targetKcal={targetKcal}
+            targetProteinG={targetProteinG}
+            targetCarbsG={targetCarbsG}
+            targetFatG={targetFatG}
             savedManualKcal={currentManualKcal}
             onManualKcalChange={setCurrentManualKcal}
           />
@@ -650,7 +680,7 @@ function DagForm({ day, weekNumber, entry, sheetDay, targetKcal, onSave, isSavin
 
       <Button
         className="w-full h-12 font-bold rounded-lg"
-        onClick={() => onSave({ ...formData, totalKcal, manualKcal: currentManualKcal })}
+        onClick={() => onSave({ ...formData, totalKcal, totalProteinG: loggedProteinG, totalCarbsG: loggedCarbsG, totalFatG: loggedFatG, manualKcal: currentManualKcal })}
         disabled={isSaving}
       >
         <Save className="w-5 h-5 mr-2" /> Opslaan

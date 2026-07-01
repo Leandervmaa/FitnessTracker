@@ -96,7 +96,9 @@ router.post("/", async (req, res) => {
       const exerciseName = workout?.exercises.find(e => e.id === exerciseId)?.name || exerciseId;
       const workoutName = workout?.name || workoutId;
       const liveSheet = await getClientLiveSheet(clientId);
-      await writeExerciseLogToSheet(weekNumber, workoutName, exerciseName, sets ?? null, reps ?? null, log.weight, notes ?? null, liveSheet.spreadsheetId);
+      if (liveSheet.spreadsheetId) {
+        await writeExerciseLogToSheet(weekNumber, workoutName, exerciseName, sets ?? null, reps ?? null, log.weight, notes ?? null, liveSheet.spreadsheetId);
+      }
     } catch (e) {
       req.log.warn({ err: e }, "Failed to write to sheets");
     }
@@ -144,7 +146,9 @@ router.put("/:id", async (req, res) => {
       const exerciseName = workout?.exercises.find(e => e.id === updated.exerciseId)?.name || updated.exerciseId;
       const workoutName = workout?.name || updated.workoutId;
       const liveSheet = await getClientLiveSheet(clientId);
-      await writeExerciseLogToSheet(updated.weekNumber, workoutName, exerciseName, updated.sets ?? null, updated.reps ?? null, updated.weight, updated.notes ?? null, liveSheet.spreadsheetId);
+      if (liveSheet.spreadsheetId) {
+        await writeExerciseLogToSheet(updated.weekNumber, workoutName, exerciseName, updated.sets ?? null, updated.reps ?? null, updated.weight, updated.notes ?? null, liveSheet.spreadsheetId);
+      }
     } catch (e) {
       req.log.warn({ err: e }, "Failed to write to sheets");
     }

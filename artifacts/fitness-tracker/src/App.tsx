@@ -12,6 +12,8 @@ import NotFound from "@/pages/not-found";
 import Home from "@/pages/home";
 import LoginPage from "@/pages/login";
 import TrainerDashboard from "@/pages/trainer-dashboard";
+import BibliotheekPage from "@/pages/bibliotheek";
+import WeekplannerPage from "@/pages/weekplanner";
 import TrainingList from "@/pages/trainingen/index";
 import TrainingDetail from "@/pages/trainingen/detail";
 import NutritionList from "@/pages/dagboek/index";
@@ -53,6 +55,8 @@ function Router() {
     <Switch>
       <Route path="/" component={Landing} />
       <Route path="/trainer" component={TrainerRoute} />
+      <Route path="/bibliotheek" component={TrainerLibraryRoute} />
+      <Route path="/weekplanner" component={TrainerPlannerRoute} />
       <Route path="/trainingen" component={TrainingList} />
       <Route path="/trainingen/:workoutId" component={TrainingDetail} />
       <Route path="/dagboek" component={NutritionList} />
@@ -72,6 +76,18 @@ function TrainerRoute() {
     return <Home />;
   }
   return <TrainerDashboard />;
+}
+
+function TrainerLibraryRoute() {
+  const { user } = useAuth();
+  if (user?.role !== "trainer") return <Home />;
+  return <BibliotheekPage />;
+}
+
+function TrainerPlannerRoute() {
+  const { user } = useAuth();
+  if (user?.role !== "trainer") return <Home />;
+  return <WeekplannerPage />;
 }
 
 /** Activates SSE connection — must be inside QueryClientProvider */

@@ -13,7 +13,10 @@ import foodRouter from "./food";
 import syncRouter from "./sync";
 import authRouter from "./auth";
 import clientsRouter from "./clients";
-import { requireAuth } from "../lib/auth";
+import libraryRouter from "./library";
+import plansRouter from "./plans";
+import { getScopedClientId, requireAuth } from "../lib/auth";
+import { refreshClientLiveSheet } from "../services/clientSheetService";
 
 const router: IRouter = Router();
 
@@ -21,8 +24,18 @@ router.use(healthRouter);
 router.use("/auth", authRouter);
 router.use(requireAuth);
 router.use("/clients", clientsRouter);
+router.use("/library", libraryRouter);
+router.use(async (req, _res, next) => {
+  try {
+    await refreshClientLiveSheet(getScopedClientId(req));
+  } catch {
+    // Live sheet refresh should never block normal app usage.
+  }
+  next();
+});
 router.use("/weeks", weeksRouter);
 router.use("/workouts", workoutsRouter);
+router.use("/plans", plansRouter);
 router.use("/exercise-logs", exerciseLogsRouter);
 router.use("/nutrition", nutritionRouter);
 router.use("/feedback-questions", feedbackQuestionsRouter);

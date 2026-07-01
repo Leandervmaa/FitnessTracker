@@ -358,12 +358,15 @@ interface Props {
   dayLabel: string;
   sheetKcal?: number | null;
   targetKcal?: number | null;
+  targetProteinG?: number | null;
+  targetCarbsG?: number | null;
+  targetFatG?: number | null;
   savedManualKcal?: number;           // restored from DB on load
   onTotalKcalChange?: (totalKcal: number) => void;
   onManualKcalChange?: (manual: number) => void; // so parent can persist it
 }
 
-export default function FoodTracker({ weekNumber, day, dayLabel, sheetKcal, targetKcal, savedManualKcal, onTotalKcalChange, onManualKcalChange }: Props) {
+export default function FoodTracker({ weekNumber, day, dayLabel, sheetKcal, targetKcal, targetProteinG, targetCarbsG, targetFatG, savedManualKcal, onTotalKcalChange, onManualKcalChange }: Props) {
   const { toast } = useToast();
   const qc = useQueryClient();
 
@@ -385,6 +388,9 @@ export default function FoodTracker({ weekNumber, day, dayLabel, sheetKcal, targ
 
   // Totals
   const loggedKcal = foodLogs.reduce((s, l) => s + parseFloat(l.kcal || "0"), 0);
+  const loggedProteinG = Math.round(foodLogs.reduce((s, l) => s + parseFloat(l.eiwittenG || "0"), 0) * 10) / 10;
+  const loggedCarbsG = Math.round(foodLogs.reduce((s, l) => s + parseFloat(l.koolhydratenG || "0"), 0) * 10) / 10;
+  const loggedFatG = Math.round(foodLogs.reduce((s, l) => s + parseFloat(l.vetenG || "0"), 0) * 10) / 10;
   const manual = parseFloat(manualKcal) || 0;
   const totalKcal = Math.round(manual + loggedKcal);
 
@@ -577,6 +583,14 @@ export default function FoodTracker({ weekNumber, day, dayLabel, sheetKcal, targ
               </span>
             </div>
           )}
+
+          {(targetProteinG != null || targetCarbsG != null || targetFatG != null) && (
+            <div className="grid grid-cols-3 gap-2 pt-2 mt-2 border-t border-primary/10">
+              <MacroBudget label="Eiwit" value={loggedProteinG} target={targetProteinG} />
+              <MacroBudget label="Koolh." value={loggedCarbsG} target={targetCarbsG} />
+              <MacroBudget label="Vet" value={loggedFatG} target={targetFatG} />
+            </div>
+          )}
           
           {/* Fallback to sheetKcal diff if no targetKcal */}
           {!targetKcal && sheetKcal != null && totalKcal > 0 && (
@@ -589,6 +603,21 @@ export default function FoodTracker({ weekNumber, day, dayLabel, sheetKcal, targ
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function MacroBudget({ label, value, target }: { label: string; value: number; target?: number | null }) {
+  const remaining = target != null ? Math.round((target - value) * 10) / 10 : null;
+  return (
+    <div className="rounded-lg bg-background/70 border border-border/70 p-2 text-center">
+      <div className="text-[9px] text-muted-foreground font-bold uppercase">{label}</div>
+      <div className="text-sm font-black">{value}g</div>
+      {remaining !== null && (
+        <div className={remaining < 0 ? "text-[10px] font-bold text-orange-500" : "text-[10px] font-bold text-green-600"}>
+          {remaining < 0 ? `+${Math.abs(remaining)}g` : `${remaining}g over`}
+        </div>
+      )}
     </div>
   );
 }

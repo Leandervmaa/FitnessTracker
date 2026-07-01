@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
-import { FileSpreadsheet, Link as LinkIcon, LogOut, Plus, Search, UserRound, Pencil, PlayCircle, Upload } from "lucide-react";
+import { BookOpen, CalendarDays, FileSpreadsheet, Link as LinkIcon, LogOut, Plus, Search, UserRound, Pencil, PlayCircle, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -161,6 +161,10 @@ export default function TrainerDashboard() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input value={query} onChange={(e) => setQuery(e.target.value)} className="pl-10 h-11" placeholder="Zoek klant, doel of gebruikersnaam" />
           </div>
+          <Button variant="outline" onClick={() => setLocation("/bibliotheek")} className="h-11 font-bold">
+            <BookOpen className="h-4 w-4 mr-2" />
+            Bibliotheek
+          </Button>
           <Button onClick={openNew} className="h-11 font-bold">
             <Plus className="h-4 w-4 mr-2" />
             Klant toevoegen
@@ -187,6 +191,17 @@ export default function TrainerDashboard() {
                 <Button className="flex-1 font-bold" onClick={() => openClient(client.id)}>
                   <PlayCircle className="h-4 w-4 mr-2" />
                   Traject openen
+                </Button>
+                <Button
+                  variant="outline"
+                  className="flex-1 font-bold"
+                  onClick={() => {
+                    setActiveClientId(client.id);
+                    setLocation("/weekplanner");
+                  }}
+                >
+                  <CalendarDays className="h-4 w-4 mr-2" />
+                  Weekplanner
                 </Button>
                 <Button variant="outline" size="icon" onClick={() => openEdit(client)}>
                   <Pencil className="h-4 w-4" />

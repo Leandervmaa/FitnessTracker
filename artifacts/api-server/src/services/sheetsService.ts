@@ -11,6 +11,12 @@ export interface SheetsStatus {
   spreadsheetNaam?: string;
 }
 
+export type SheetProperty = {
+  sheetId: number;
+  title: string;
+  index?: number;
+};
+
 function resolveSpreadsheetId(spreadsheetId?: string | null): string {
   return spreadsheetId || process.env.GOOGLE_SPREADSHEET_ID || SPREADSHEET_ID;
 }
@@ -98,6 +104,106 @@ export async function readRange(sheetRange: string, spreadsheetId?: string | nul
     logger.error({ err, range: sheetRange }, "Sheets readRange exception");
     return null;
   }
+}
+
+export async function getSpreadsheetSheets(spreadsheetId?: string | null): Promise<SheetProperty[] | null> {
+  const token = getAccessToken();
+  if (!token) return null;
+  const resolvedSpreadsheetId = resolveSpreadsheetId(spreadsheetId);
+
+  try {
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${resolvedSpreadsheetId}?fields=sheets.properties(sheetId,title,index)`;
+    const resp = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (!resp.ok) {
+      logger.warn({ status: resp.status }, "Sheets metadata read failed");
+      return null;
+    }
+
+    const data = (await resp.json()) as {
+      sheets?: { properties?: SheetProperty }[];
+    };
+    return data.sheets?.map((sheet) => sheet.properties).filter((sheet): sheet is SheetProperty => !!sheet) ?? [];
+  } catch (err) {
+    logger.error({ err }, "Sheets metadata read exception");
+    return null;
+  }
+}
+
+export async function batchUpdate(
+  requests: Record<string, unknown>[],
+  spreadsheetId?: string | null
+): Promise<boolean> {
+  const token = getAccessToken();
+  if (!token) return false;
+  const resolvedSpreadsheetId = resolveSpreadsheetId(spreadsheetId);
+
+  try {
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${resolvedSpreadsheetId}:batchUpdate`;
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ requests }),
+    });
+
+    if (!resp.ok) {
+      logger.warn({ status: resp.status }, "Sheets batchUpdate failed");
+      return false;
+    }
+    return true;
+  } catch (err) {
+    logger.error({ err }, "Sheets batchUpdate exception");
+    return false;
+  }
+}
+
+export async function ensureSheet(
+  sheetName: string,
+  spreadsheetId?: string | null,
+  templateSheetName?: string | null
+): Promise<boolean> {
+  const sheets = await getSpreadsheetSheets(spreadsheetId);
+  if (!sheets) return false;
+  if (sheets.some((sheet) => sheet.title === sheetName)) return true;
+
+  const template = templateSheetName
+    ? sheets.find((sheet) => sheet.title === templateSheetName)
+    : null;
+
+  if (template) {
+    const duplicated = await batchUpdate(
+      [
+        {
+          duplicateSheet: {
+            sourceSheetId: template.sheetId,
+            insertSheetIndex: (template.index ?? sheets.length - 1) + 1,
+            newSheetName: sheetName,
+          },
+        },
+      ],
+      spreadsheetId,
+    );
+    if (duplicated) return true;
+  }
+
+  return batchUpdate(
+    [
+      {
+        addSheet: {
+          properties: {
+            title: sheetName,
+            gridProperties: { rowCount: 200, columnCount: 26 },
+          },
+        },
+      },
+    ],
+    spreadsheetId,
+  );
 }
 
 export async function writeRange(
