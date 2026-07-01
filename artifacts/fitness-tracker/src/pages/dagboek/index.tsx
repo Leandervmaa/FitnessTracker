@@ -257,7 +257,7 @@ export default function DagboekPage() {
           {DAYS.map(day => {
             const entry = entries?.find(e => e.day === day.id);
             const sheetDay = sheetDays.find(d => d.dayId === day.id);
-            const dayTarget = appNutritionTargets.find(target => target.dayLabel === day.nl);
+            const dailyTarget = appNutritionTargets[0];
             return (
               <TabsContent key={day.id} value={day.id} className="mt-0">
                 <DagForm
@@ -265,10 +265,10 @@ export default function DagboekPage() {
                   weekNumber={selectedWeek!}
                   entry={entry}
                   sheetDay={sheetDay ?? null}
-                  targetKcal={dayTarget?.kcal ?? nutritionTarget?.kcal ?? null}
-                  targetProteinG={dayTarget?.proteinG ?? null}
-                  targetCarbsG={dayTarget?.carbsG ?? null}
-                  targetFatG={dayTarget?.fatG ?? null}
+                  targetKcal={dailyTarget?.kcal ?? nutritionTarget?.kcal ?? null}
+                  targetProteinG={dailyTarget?.proteinG ?? null}
+                  targetCarbsG={dailyTarget?.carbsG ?? null}
+                  targetFatG={dailyTarget?.fatG ?? null}
                   onSave={(data) => handleSave(day.id, data)}
                   isSaving={createEntry.isPending || updateEntry.isPending}
                   requestedFields={progressieWeek?.requestedFields || []}

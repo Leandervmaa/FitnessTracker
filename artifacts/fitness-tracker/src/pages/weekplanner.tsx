@@ -8,7 +8,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useClient } from "@/components/client-context";
-import { useWeek } from "@/components/week-context";
 import { apiFetch } from "@/lib/api";
 
 type LibraryExercise = {
@@ -49,6 +48,11 @@ type PlannedWeek = {
   workouts: PlannedWorkout[];
 };
 
+type PlannedWeeks = {
+  weekNumbers: number[];
+  nextWeekNumber: number;
+};
+
 type NutritionTarget = {
   id: string;
   dayLabel: string;
@@ -82,8 +86,8 @@ export default function WeekplannerPage() {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const { activeClientId } = useClient();
-  const { selectedWeek, setSelectedWeek } = useWeek();
-  const weekNumber = selectedWeek || 1;
+  const [plannerWeekNumber, setPlannerWeekNumber] = useState(1);
+  const [weekWasChosen, setWeekWasChosen] = useState(false);
   const [exerciseDialogOpen, setExerciseDialogOpen] = useState(false);
   const [activeWorkout, setActiveWorkout] = useState<PlannedWorkout | null>(null);
   const [editingExercise, setEditingExercise] = useState<PlannedExercise | null>(null);
@@ -93,11 +97,21 @@ export default function WeekplannerPage() {
   const [targets, setTargets] = useState<NutritionTarget[]>([]);
   const [error, setError] = useState("");
 
-  const { data: week, isLoading } = useQuery<PlannedWeek>({
-    queryKey: ["planned-week", weekNumber, activeClientId],
+  const { data: plannedWeeks } = useQuery<PlannedWeeks>({
+    queryKey: ["planned-weeks", activeClientId],
     enabled: !!activeClientId,
     queryFn: async () => {
-      const res = await apiFetch(`/api/plans/week/${weekNumber}`);
+      const res = await apiFetch("/api/plans/weeks");
+      if (!res.ok) throw new Error("Weken ophalen mislukt");
+      return res.json();
+    },
+  });
+
+  const { data: week, isLoading } = useQuery<PlannedWeek>({
+    queryKey: ["planned-week", plannerWeekNumber, activeClientId],
+    enabled: !!activeClientId,
+    queryFn: async () => {
+      const res = await apiFetch(`/api/plans/week/${plannerWeekNumber}`);
       if (!res.ok) throw new Error("Weekplanning ophalen mislukt");
       return res.json();
     },
@@ -133,8 +147,21 @@ export default function WeekplannerPage() {
   });
 
   useEffect(() => {
-    setTargets(nutritionTargets);
+    setTargets(nutritionTargets.length > 0 ? nutritionTargets : [{
+      id: "empty-daily",
+      dayLabel: "Dagelijks",
+      kcal: null,
+      proteinG: null,
+      carbsG: null,
+      fatG: null,
+      waterMl: null,
+    }]);
   }, [nutritionTargets]);
+
+  useEffect(() => {
+    if (!plannedWeeks || weekWasChosen) return;
+    setPlannerWeekNumber(plannedWeeks.nextWeekNumber || 1);
+  }, [plannedWeeks, weekWasChosen]);
 
   const filteredLibrary = useMemo(() => {
     const q = librarySearch.trim().toLowerCase();
@@ -145,15 +172,17 @@ export default function WeekplannerPage() {
 
   const invalidateWeek = () => {
     queryClient.invalidateQueries({ queryKey: ["planned-week"] });
+    queryClient.invalidateQueries({ queryKey: ["planned-weeks"] });
     queryClient.invalidateQueries({ queryKey: ["training-templates"] });
     queryClient.invalidateQueries({ queryKey: ["nutrition-targets"] });
   };
 
   const createWorkout = useMutation({
     mutationFn: async () => {
+      setError("");
       const order = week?.workouts?.length || 0;
       const name = `Training ${String.fromCharCode(65 + order)}`;
-      const res = await apiFetch(`/api/plans/week/${weekNumber}/workouts`, {
+      const res = await apiFetch(`/api/plans/week/${plannerWeekNumber}/workouts`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, dayLabel: name, sortOrder: order }),
@@ -163,20 +192,23 @@ export default function WeekplannerPage() {
       return data;
     },
     onSuccess: invalidateWeek,
+    onError: (err) => setError(err instanceof Error ? err.message : "Training aanmaken mislukt"),
   });
 
   const copyWeek = useMutation({
     mutationFn: async () => {
-      const res = await apiFetch(`/api/plans/week/${weekNumber}/copy`, {
+      setError("");
+      const res = await apiFetch(`/api/plans/week/${plannerWeekNumber}/copy`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sourceWeek: Math.max(1, weekNumber - 1) }),
+        body: JSON.stringify({ sourceWeek: Math.max(1, plannerWeekNumber - 1) }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Week kopieren mislukt");
       return data;
     },
     onSuccess: invalidateWeek,
+    onError: (err) => setError(err instanceof Error ? err.message : "Week kopieren mislukt"),
   });
 
   const applyTemplate = useMutation({
@@ -184,7 +216,7 @@ export default function WeekplannerPage() {
       const template = templates.find((item) => item.id === templateId);
       if (!template) throw new Error("Kies een template");
       const order = week?.workouts?.length || 0;
-      const res = await apiFetch(`/api/plans/week/${weekNumber}/workouts/from-template`, {
+      const res = await apiFetch(`/api/plans/week/${plannerWeekNumber}/workouts/from-template`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -280,7 +312,7 @@ export default function WeekplannerPage() {
       const res = await apiFetch("/api/plans/nutrition-targets", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targets }),
+        body: JSON.stringify({ target: targets[0] }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Voedingsdoelen opslaan mislukt");
@@ -342,7 +374,24 @@ export default function WeekplannerPage() {
   };
 
   const updateTarget = (index: number, key: keyof NutritionTarget, value: string) => {
-    setTargets((items) => items.map((item, itemIndex) => (itemIndex === index ? { ...item, [key]: value === "" ? null : Number(value) } : item)));
+    setTargets((items) => {
+      const current = items[index] || {
+        id: "empty-daily",
+        dayLabel: "Dagelijks",
+        kcal: null,
+        proteinG: null,
+        carbsG: null,
+        fatG: null,
+        waterMl: null,
+      };
+      const next = { ...current, [key]: value === "" ? null : Number(value) };
+      return index === 0 ? [next] : items.map((item, itemIndex) => (itemIndex === index ? next : item));
+    });
+  };
+
+  const chooseWeek = (value: number) => {
+    setWeekWasChosen(true);
+    setPlannerWeekNumber(Math.max(1, value || 1));
   };
 
   if (!activeClientId) {
@@ -368,13 +417,20 @@ export default function WeekplannerPage() {
           </div>
           <div className="flex-1 min-w-0">
             <h1 className="text-xl font-black text-foreground">Weekplanner</h1>
-            <p className="text-xs text-muted-foreground">Week {weekNumber}</p>
+            <p className="text-xs text-muted-foreground">Je maakt of bewerkt week {plannerWeekNumber}</p>
           </div>
+          <Button
+            variant="outline"
+            onClick={() => chooseWeek(plannedWeeks?.nextWeekNumber || plannerWeekNumber + 1)}
+            className="h-10 font-bold"
+          >
+            Nieuwe week
+          </Button>
           <Input
             type="number"
             min={1}
-            value={weekNumber}
-            onChange={(e) => setSelectedWeek(Number(e.target.value) || 1)}
+            value={plannerWeekNumber}
+            onChange={(e) => chooseWeek(Number(e.target.value) || 1)}
             className="h-10 w-20 font-bold"
           />
         </div>
@@ -386,9 +442,9 @@ export default function WeekplannerPage() {
             <Plus className="h-4 w-4 mr-2" />
             Training
           </Button>
-          <Button variant="outline" onClick={() => copyWeek.mutate()} disabled={copyWeek.isPending || weekNumber <= 1} className="h-11 font-bold">
+          <Button variant="outline" onClick={() => copyWeek.mutate()} disabled={copyWeek.isPending || plannerWeekNumber <= 1} className="h-11 font-bold">
             <Copy className="h-4 w-4 mr-2" />
-            Vorige week kopieren
+            Week {Math.max(1, plannerWeekNumber - 1)} kopieren naar week {plannerWeekNumber}
           </Button>
           <div className="flex gap-2 flex-1">
             <select value={templateId} onChange={(e) => setTemplateId(e.target.value)} className="h-11 flex-1 rounded-md border border-input bg-background px-3 text-sm">
@@ -469,22 +525,23 @@ export default function WeekplannerPage() {
 
           <aside className="border border-border bg-card rounded-lg p-4 h-fit">
             <div className="flex items-center justify-between gap-3 mb-4">
-              <h2 className="font-black text-lg">Macrodoelen</h2>
+              <div>
+                <h2 className="font-black text-lg">Voedingsdoel</h2>
+                <p className="text-xs text-muted-foreground">Dit doel geldt elke dag opnieuw.</p>
+              </div>
               <Button size="sm" onClick={() => saveTargets.mutate()} disabled={saveTargets.isPending} className="font-bold">
                 <Save className="h-4 w-4 mr-2" />
                 Opslaan
               </Button>
             </div>
-            <div className="space-y-3">
-              {targets.map((target, index) => (
-                <div key={`${target.id}-${target.dayLabel}`} className="grid grid-cols-[74px_repeat(4,minmax(0,1fr))] gap-2 items-center">
-                  <div className="text-sm font-bold truncate">{target.dayLabel}</div>
-                  <SmallNumber value={target.kcal} onChange={(value) => updateTarget(index, "kcal", value)} placeholder="kcal" />
-                  <SmallNumber value={target.proteinG} onChange={(value) => updateTarget(index, "proteinG", value)} placeholder="eiwit" />
-                  <SmallNumber value={target.carbsG} onChange={(value) => updateTarget(index, "carbsG", value)} placeholder="kh" />
-                  <SmallNumber value={target.fatG} onChange={(value) => updateTarget(index, "fatG", value)} placeholder="vet" />
-                </div>
-              ))}
+            <div className="grid grid-cols-2 gap-3">
+              <TargetField label="Kcal" value={targets[0]?.kcal ?? null} onChange={(value) => updateTarget(0, "kcal", value)} />
+              <TargetField label="Eiwit g" value={targets[0]?.proteinG ?? null} onChange={(value) => updateTarget(0, "proteinG", value)} />
+              <TargetField label="Koolhydraten g" value={targets[0]?.carbsG ?? null} onChange={(value) => updateTarget(0, "carbsG", value)} />
+              <TargetField label="Vet g" value={targets[0]?.fatG ?? null} onChange={(value) => updateTarget(0, "fatG", value)} />
+              <div className="col-span-2">
+                <TargetField label="Water ml" value={targets[0]?.waterMl ?? null} onChange={(value) => updateTarget(0, "waterMl", value)} />
+              </div>
             </div>
           </aside>
         </div>
@@ -555,14 +612,16 @@ function Field({ label, value, onChange, type = "text" }: { label: string; value
   );
 }
 
-function SmallNumber({ value, onChange, placeholder }: { value: number | null; onChange: (value: string) => void; placeholder: string }) {
+function TargetField({ label, value, onChange }: { label: string; value: number | null; onChange: (value: string) => void }) {
   return (
-    <Input
-      type="number"
-      value={value ?? ""}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      className="h-9 px-2 text-sm"
-    />
+    <div className="space-y-1.5">
+      <Label className="text-xs font-semibold">{label}</Label>
+      <Input
+        type="number"
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-10 px-3 text-sm font-bold"
+      />
+    </div>
   );
 }

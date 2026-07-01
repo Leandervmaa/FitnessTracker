@@ -5,7 +5,6 @@ import {
   plannedWorkoutExercisesTable,
   plannedWorkoutsTable,
   type ExerciseSetLog,
-  type NutritionTarget,
 } from "@workspace/db";
 import { asc, eq } from "drizzle-orm";
 import { logger } from "../lib/logger.js";
@@ -144,17 +143,18 @@ export async function syncNutritionTargetsToSheet(clientId: string): Promise<voi
     .where(eq(nutritionTargetsTable.clientId, clientId))
     .orderBy(asc(nutritionTargetsTable.sortOrder));
 
+  const target = targets[0] ?? null;
   const rows = [
-    ["Dag", "Kcal", "Eiwit", "Koolhydraten", "Vet", "Water ml", "Laatste update"],
-    ...targets.map((target: NutritionTarget) => [
-      target.dayLabel,
-      value(target.kcal),
-      value(target.proteinG),
-      value(target.carbsG),
-      value(target.fatG),
-      value(target.waterMl),
+    ["Doel", "Kcal", "Eiwit", "Koolhydraten", "Vet", "Water ml", "Laatste update"],
+    [
+      "Dagelijks doel",
+      value(target?.kcal),
+      value(target?.proteinG),
+      value(target?.carbsG),
+      value(target?.fatG),
+      value(target?.waterMl),
       new Date().toLocaleDateString("nl-NL"),
-    ]),
+    ],
   ];
 
   await writeRange(sheetRange("Voeding", "A1:G30"), padRows(rows, 7, 30), liveSheet.spreadsheetId);

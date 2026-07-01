@@ -21,7 +21,7 @@ import {
 } from "../services/planningSheetService.js";
 
 const router = Router();
-const DAYS = ["Maandag", "Dinsdag", "Woensdag", "Donderdag", "Vrijdag", "Zaterdag", "Zondag"];
+const DAILY_TARGET_LABEL = "Dagelijks";
 
 function clean(value: unknown): string | null {
   const text = String(value || "").trim();
@@ -43,12 +43,16 @@ function numberString(value: unknown): string | null {
   return Number.isFinite(num) ? String(num) : null;
 }
 
-async function syncWeek(req: Request, clientId: string, weekNumber: number) {
-  try {
-    await syncPlannedWeekToSheet(clientId, weekNumber);
-  } catch (err) {
+function syncWeek(req: Request, clientId: string, weekNumber: number) {
+  void syncPlannedWeekToSheet(clientId, weekNumber).catch((err) => {
     req.log.warn({ err, clientId, weekNumber }, "Failed to sync planned week to sheet");
-  }
+  });
+}
+
+function syncNutrition(req: Request, clientId: string) {
+  void syncNutritionTargetsToSheet(clientId).catch((err) => {
+    req.log.warn({ err, clientId }, "Failed to sync nutrition targets to sheet");
+  });
 }
 
 async function findWorkoutForClient(clientId: string, workoutId: string) {
@@ -126,6 +130,24 @@ router.get("/week/:weekNumber", async (req, res) => {
   }
 });
 
+router.get("/weeks", async (req, res) => {
+  try {
+    const clientId = getScopedClientId(req);
+    const workouts = await db
+      .select({ weekNumber: plannedWorkoutsTable.weekNumber })
+      .from(plannedWorkoutsTable)
+      .where(eq(plannedWorkoutsTable.clientId, clientId))
+      .orderBy(asc(plannedWorkoutsTable.weekNumber));
+
+    const weekNumbers = Array.from(new Set(workouts.map((workout) => workout.weekNumber))).sort((a, b) => a - b);
+    const nextWeekNumber = weekNumbers.length > 0 ? Math.max(...weekNumbers) + 1 : 1;
+    return void res.json({ weekNumbers, nextWeekNumber });
+  } catch (err) {
+    req.log.error({ err }, "Failed to list planned weeks");
+    return void res.status(500).json({ error: "Weken ophalen mislukt" });
+  }
+});
+
 router.get("/workouts/:workoutId", async (req, res) => {
   try {
     const clientId = getScopedClientId(req);
@@ -158,7 +180,7 @@ router.post("/week/:weekNumber/workouts", requireTrainer, async (req, res) => {
       })
       .returning();
 
-    await syncWeek(req, clientId, weekNumber);
+    syncWeek(req, clientId, weekNumber);
     return void res.status(201).json(workout);
   } catch (err) {
     req.log.error({ err }, "Failed to create planned workout");
@@ -183,7 +205,7 @@ router.post("/week/:weekNumber/workouts/from-template", requireTrainer, async (r
     });
 
     if (!workout) return void res.status(404).json({ error: "Template niet gevonden" });
-    await syncWeek(req, clientId, weekNumber);
+    syncWeek(req, clientId, weekNumber);
     return void res.status(201).json(workout);
   } catch (err) {
     req.log.error({ err }, "Failed to create workout from template");
@@ -233,7 +255,7 @@ router.post("/week/:weekNumber/copy", requireTrainer, async (req, res) => {
       }
     }
 
-    await syncWeek(req, clientId, weekNumber);
+    syncWeek(req, clientId, weekNumber);
     return void res.status(201).json({ weekNumber, workouts: await getWeekPlan(clientId, weekNumber) });
   } catch (err) {
     req.log.error({ err }, "Failed to copy planned week");
@@ -258,7 +280,7 @@ router.put("/workouts/:workoutId", requireTrainer, async (req, res) => {
       .where(and(eq(plannedWorkoutsTable.id, existing.id), eq(plannedWorkoutsTable.clientId, clientId)))
       .returning();
 
-    await syncWeek(req, clientId, updated.weekNumber);
+    syncWeek(req, clientId, updated.weekNumber);
     return void res.json(updated);
   } catch (err) {
     req.log.error({ err }, "Failed to update planned workout");
@@ -276,7 +298,7 @@ router.delete("/workouts/:workoutId", requireTrainer, async (req, res) => {
     await db.delete(plannedWorkoutExercisesTable).where(eq(plannedWorkoutExercisesTable.workoutId, existing.id));
     await db.delete(plannedWorkoutsTable).where(eq(plannedWorkoutsTable.id, existing.id));
 
-    await syncWeek(req, clientId, existing.weekNumber);
+    syncWeek(req, clientId, existing.weekNumber);
     return void res.status(204).send();
   } catch (err) {
     req.log.error({ err }, "Failed to delete planned workout");
@@ -341,7 +363,7 @@ router.post("/workouts/:workoutId/exercises", requireTrainer, async (req, res) =
       })
       .returning();
 
-    await syncWeek(req, clientId, workout.weekNumber);
+    syncWeek(req, clientId, workout.weekNumber);
     return void res.status(201).json(created);
   } catch (err) {
     req.log.error({ err }, "Failed to add planned exercise");
@@ -373,7 +395,7 @@ router.put("/exercises/:exerciseId", requireTrainer, async (req, res) => {
       .where(eq(plannedWorkoutExercisesTable.id, existing.id))
       .returning();
 
-    await syncWeek(req, clientId, updated.weekNumber);
+    syncWeek(req, clientId, updated.weekNumber);
     return void res.json(updated);
   } catch (err) {
     req.log.error({ err }, "Failed to update planned exercise");
@@ -393,7 +415,7 @@ router.delete("/exercises/:exerciseId", requireTrainer, async (req, res) => {
     await db.delete(exerciseSetLogsTable).where(eq(exerciseSetLogsTable.plannedExerciseId, existing.id));
     await db.delete(plannedWorkoutExercisesTable).where(eq(plannedWorkoutExercisesTable.id, existing.id));
 
-    await syncWeek(req, clientId, existing.weekNumber);
+    syncWeek(req, clientId, existing.weekNumber);
     return void res.status(204).send();
   } catch (err) {
     req.log.error({ err }, "Failed to delete planned exercise");
@@ -450,11 +472,9 @@ router.post("/set-logs", async (req, res) => {
           })
           .returning();
 
-    try {
-      await writePlannedSetLogToSheet({ clientId, log, workoutName: workout.name, exerciseName: exercise.name });
-    } catch (err) {
+    void writePlannedSetLogToSheet({ clientId, log, workoutName: workout.name, exerciseName: exercise.name }).catch((err) => {
       req.log.warn({ err, clientId }, "Failed to write planned set log to sheet");
-    }
+    });
 
     return void res.status(existing ? 200 : 201).json(log);
   } catch (err) {
@@ -472,20 +492,24 @@ router.get("/nutrition-targets", async (req, res) => {
       .where(eq(nutritionTargetsTable.clientId, clientId))
       .orderBy(asc(nutritionTargetsTable.sortOrder));
 
-    if (targets.length > 0) return void res.json(targets);
-    return void res.json(
-      DAYS.map((dayLabel, index) => ({
-        id: `empty-${index}`,
+    if (targets.length > 0) {
+      const dailyTarget = targets.find((target) => target.dayLabel === DAILY_TARGET_LABEL) || targets[0];
+      return void res.json([dailyTarget]);
+    }
+
+    return void res.json([
+      {
+        id: "empty-daily",
         clientId,
-        dayLabel,
+        dayLabel: DAILY_TARGET_LABEL,
         kcal: null,
         proteinG: null,
         carbsG: null,
         fatG: null,
         waterMl: null,
-        sortOrder: index,
-      })),
-    );
+        sortOrder: 0,
+      },
+    ]);
   } catch (err) {
     req.log.error({ err }, "Failed to get nutrition targets");
     return void res.status(500).json({ error: "Voedingsdoelen ophalen mislukt" });
@@ -495,38 +519,25 @@ router.get("/nutrition-targets", async (req, res) => {
 router.put("/nutrition-targets", requireTrainer, async (req, res) => {
   try {
     const clientId = getScopedClientId(req);
-    const targets = Array.isArray(req.body?.targets) ? req.body.targets : [];
+    const input = req.body?.target || (Array.isArray(req.body?.targets) ? req.body.targets[0] : {});
+    const values = {
+      kcal: input?.kcal !== undefined && input.kcal !== "" ? intValue(input.kcal, 0) : null,
+      proteinG: input?.proteinG !== undefined && input.proteinG !== "" ? intValue(input.proteinG, 0) : null,
+      carbsG: input?.carbsG !== undefined && input.carbsG !== "" ? intValue(input.carbsG, 0) : null,
+      fatG: input?.fatG !== undefined && input.fatG !== "" ? intValue(input.fatG, 0) : null,
+      waterMl: input?.waterMl !== undefined && input.waterMl !== "" ? intValue(input.waterMl, 0) : null,
+      sortOrder: 0,
+    };
 
-    for (let index = 0; index < targets.length; index += 1) {
-      const input = targets[index];
-      const dayLabel = clean(input?.dayLabel) || DAYS[index] || `Dag ${index + 1}`;
-      const [existing] = await db
-        .select()
-        .from(nutritionTargetsTable)
-        .where(and(eq(nutritionTargetsTable.clientId, clientId), eq(nutritionTargetsTable.dayLabel, dayLabel)));
+    await db.delete(nutritionTargetsTable).where(eq(nutritionTargetsTable.clientId, clientId));
+    await db.insert(nutritionTargetsTable).values({
+      id: randomId("nt"),
+      clientId,
+      dayLabel: DAILY_TARGET_LABEL,
+      ...values,
+    });
 
-      const values = {
-        kcal: input?.kcal !== undefined && input.kcal !== "" ? intValue(input.kcal, 0) : null,
-        proteinG: input?.proteinG !== undefined && input.proteinG !== "" ? intValue(input.proteinG, 0) : null,
-        carbsG: input?.carbsG !== undefined && input.carbsG !== "" ? intValue(input.carbsG, 0) : null,
-        fatG: input?.fatG !== undefined && input.fatG !== "" ? intValue(input.fatG, 0) : null,
-        waterMl: input?.waterMl !== undefined && input.waterMl !== "" ? intValue(input.waterMl, 0) : null,
-        sortOrder: index,
-      };
-
-      if (existing) {
-        await db.update(nutritionTargetsTable).set(values).where(eq(nutritionTargetsTable.id, existing.id));
-      } else {
-        await db.insert(nutritionTargetsTable).values({
-          id: randomId("nt"),
-          clientId,
-          dayLabel,
-          ...values,
-        });
-      }
-    }
-
-    await syncNutritionTargetsToSheet(clientId);
+    syncNutrition(req, clientId);
     const updated = await db
       .select()
       .from(nutritionTargetsTable)
