@@ -10,7 +10,7 @@ const router = Router();
 
 router.get("/target", async (req, res) => {
   try {
-    const target = getNutritionTarget(1);
+    const target = getNutritionTarget(1, getScopedClientId(req));
     if (!target) {
       return res.status(404).json({ error: "Geen voedingsdoelen gevonden" });
     }
@@ -33,7 +33,7 @@ router.get("/progressie/:weekNumber", async (req, res) => {
     const weekNumber = parseInt(req.params.weekNumber, 10);
     if (isNaN(weekNumber)) return void res.status(400).json({ error: "Ongeldig weeknummer" });
 
-    const weekData = getProgressieWeek(weekNumber);
+    const weekData = getProgressieWeek(weekNumber, getScopedClientId(req));
     if (!weekData) {
       return void res.status(404).json({ error: "Geen progressie-data gevonden voor deze week" });
     }

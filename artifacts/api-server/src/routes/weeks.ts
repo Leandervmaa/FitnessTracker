@@ -15,7 +15,7 @@ const PHOTO_ANGLES     = ["front", "side", "back"] as const;
 const PHOTO_WEEKS      = new Set([1, 4, 7, 10, 13, 16, 20, 23, 26]);
 
 async function buildWeekSummary(weekNumber: number, clientId: string) {
-  const weekProgram = getWeek(weekNumber);
+  const weekProgram = getWeek(weekNumber, clientId);
 
   // Weeks 1–14 are already finished — mark everything as complete
   if (clientId === DEFAULT_CLIENT_ID && weekNumber <= 14) {
@@ -75,8 +75,8 @@ async function buildWeekSummary(weekNumber: number, clientId: string) {
 
 router.get("/", async (req, res) => {
   try {
-    const allWeekNumbers = getAllWeekNumbers();
     const clientId = getScopedClientId(req);
+    const allWeekNumbers = getAllWeekNumbers(clientId);
     const weeks = await Promise.all(allWeekNumbers.map((weekNumber) => buildWeekSummary(weekNumber, clientId)));
     return void res.json(weeks);
   } catch (err) {
@@ -87,8 +87,8 @@ router.get("/", async (req, res) => {
 
 router.get("/current", async (req, res) => {
   try {
-    const allWeekNumbers = getAllWeekNumbers();
     const clientId = getScopedClientId(req);
+    const allWeekNumbers = getAllWeekNumbers(clientId);
     let currentWeek = allWeekNumbers[0];
 
     for (const weekNumber of allWeekNumbers) {
@@ -110,8 +110,8 @@ router.get("/:weekNumber/workouts", async (req, res) => {
     const weekNumber = parseInt(req.params.weekNumber, 10);
     if (isNaN(weekNumber)) return void res.status(400).json({ error: "Ongeldig weeknummer" });
 
-    const weekProgram = getWeek(weekNumber);
     const clientId = getScopedClientId(req);
+    const weekProgram = getWeek(weekNumber, clientId);
     if (!weekProgram) return void res.status(404).json({ error: "Week niet gevonden" });
 
     const logs = await db

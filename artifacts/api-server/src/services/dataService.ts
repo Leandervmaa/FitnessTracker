@@ -3,44 +3,54 @@
  * Tries to load from uploaded Excel file first.
  * Falls back to hardcoded workoutProgram.ts when file is absent.
  */
-import { parseExcelFile, EXCEL_PATH, type ParsedExcelData, type ParsedWorkout, type ParsedExercise, type ParsedFeedbackQuestion, type ParsedFeedbackAnswer, type ParsedProgressieWeek, type ParsedProgressieDay } from "./excelParser.js";
+import { parseExcelFile, getExcelPath, type ParsedExcelData, type ParsedWorkout, type ParsedExercise, type ParsedFeedbackQuestion, type ParsedFeedbackAnswer, type ParsedProgressieWeek, type ParsedProgressieDay } from "./excelParser.js";
 import { getWeekProgram, getAllWeeks, getWorkoutById as getWorkoutByIdHardcoded, type WorkoutDefinition, type ExerciseDefinition } from "../data/workoutProgram.js";
-import { logger } from "../lib/logger.js";
 import fs from "fs";
 
-let cachedData: ParsedExcelData | null = null;
-let lastMtime: number | null = null;
+type CacheEntry = {
+  data: ParsedExcelData | null;
+  lastMtime: number | null;
+};
 
-function refreshIfNeeded(): ParsedExcelData | null {
+const cacheByExcelPath = new Map<string, CacheEntry>();
+
+function refreshIfNeeded(clientId?: string): ParsedExcelData | null {
+  const excelPath = getExcelPath(clientId);
+  const cache = cacheByExcelPath.get(excelPath) ?? { data: null, lastMtime: null };
   try {
-    if (!fs.existsSync(EXCEL_PATH)) {
-      cachedData = null;
-      lastMtime = null;
+    if (!fs.existsSync(excelPath)) {
+      cache.data = null;
+      cache.lastMtime = null;
+      cacheByExcelPath.set(excelPath, cache);
       return null;
     }
-    const mtime = fs.statSync(EXCEL_PATH).mtimeMs;
-    if (mtime !== lastMtime) {
-      cachedData = parseExcelFile(EXCEL_PATH);
-      lastMtime = mtime;
+    const mtime = fs.statSync(excelPath).mtimeMs;
+    if (mtime !== cache.lastMtime) {
+      cache.data = parseExcelFile(excelPath);
+      cache.lastMtime = mtime;
+      cacheByExcelPath.set(excelPath, cache);
     }
-    return cachedData;
+    return cache.data;
   } catch {
-    return cachedData;
+    return cache.data;
   }
 }
 
-export function getDataStatus(): {
+export function getDataStatus(clientId?: string): {
   source: "excel" | "demo";
   excelFilePresent: boolean;
   sheetNames?: string[];
   weeksLoaded?: number;
   parsedAt?: Date;
+  excelFilePath: string;
 } {
-  const data = refreshIfNeeded();
+  const data = refreshIfNeeded(clientId);
+  const excelFilePath = getExcelPath(clientId);
   if (data) {
     return {
       source: "excel",
       excelFilePresent: true,
+      excelFilePath,
       sheetNames: data.sheetNames,
       weeksLoaded: data.weeks.length,
       parsedAt: data.parsedAt,
@@ -49,6 +59,7 @@ export function getDataStatus(): {
   return {
     source: "demo",
     excelFilePresent: false,
+    excelFilePath,
   };
 }
 
@@ -77,16 +88,16 @@ function toWorkoutDef(w: ParsedWorkout): WorkoutDefinition {
   };
 }
 
-export function getAllWeekNumbers(): number[] {
-  const data = refreshIfNeeded();
+export function getAllWeekNumbers(clientId?: string): number[] {
+  const data = refreshIfNeeded(clientId);
   if (data && data.weeks.length > 0) {
     return data.weeks.map((w) => w.weekNumber);
   }
   return getAllWeeks();
 }
 
-export function getWeek(weekNumber: number): { weekNumber: number; workouts: WorkoutDefinition[] } | undefined {
-  const data = refreshIfNeeded();
+export function getWeek(weekNumber: number, clientId?: string): { weekNumber: number; workouts: WorkoutDefinition[] } | undefined {
+  const data = refreshIfNeeded(clientId);
   if (data && data.weeks.length > 0) {
     const week = data.weeks.find((w) => w.weekNumber === weekNumber);
     if (!week) return undefined;
@@ -99,8 +110,8 @@ export function getWeek(weekNumber: number): { weekNumber: number; workouts: Wor
   return fallback;
 }
 
-export function getWorkoutById(workoutId: string): (WorkoutDefinition & { weekNumber: number }) | undefined {
-  const data = refreshIfNeeded();
+export function getWorkoutById(workoutId: string, clientId?: string): (WorkoutDefinition & { weekNumber: number }) | undefined {
+  const data = refreshIfNeeded(clientId);
   if (data && data.weeks.length > 0) {
     for (const week of data.weeks) {
       const workout = week.workouts.find((w) => w.id === workoutId);
@@ -113,8 +124,8 @@ export function getWorkoutById(workoutId: string): (WorkoutDefinition & { weekNu
   return getWorkoutByIdHardcoded(workoutId);
 }
 
-export function getFeedbackQuestions(): ParsedFeedbackQuestion[] {
-  const data = refreshIfNeeded();
+export function getFeedbackQuestions(clientId?: string): ParsedFeedbackQuestion[] {
+  const data = refreshIfNeeded(clientId);
   if (data && data.feedbackQuestions.length > 0) {
     return data.feedbackQuestions;
   }
@@ -126,16 +137,16 @@ export function getFeedbackQuestions(): ParsedFeedbackQuestion[] {
   ];
 }
 
-export function getFeedbackAnswers(): ParsedFeedbackAnswer[] {
-  const data = refreshIfNeeded();
+export function getFeedbackAnswers(clientId?: string): ParsedFeedbackAnswer[] {
+  const data = refreshIfNeeded(clientId);
   if (data && data.feedbackAnswers.length > 0) {
     return data.feedbackAnswers;
   }
   return [];
 }
 
-export function getNutritionTarget(_weekNumber: number): { kcal: number | null; eiwitten: number | null; koolhydraten: number | null; vetten: number | null; water: number | null } | null {
-  const data = refreshIfNeeded();
+export function getNutritionTarget(_weekNumber: number, clientId?: string): { kcal: number | null; eiwitten: number | null; koolhydraten: number | null; vetten: number | null; water: number | null } | null {
+  const data = refreshIfNeeded(clientId);
   if (data?.nutritionTarget) {
     return {
       kcal: data.nutritionTarget.kcal,
@@ -148,14 +159,14 @@ export function getNutritionTarget(_weekNumber: number): { kcal: number | null; 
   return null;
 }
 
-export function getProgressieWeek(weekNumber: number): ParsedProgressieWeek | null {
-  const data = refreshIfNeeded();
+export function getProgressieWeek(weekNumber: number, clientId?: string): ParsedProgressieWeek | null {
+  const data = refreshIfNeeded(clientId);
   if (!data?.progressie) return null;
   return data.progressie.find((w) => w.weekNumber === weekNumber) ?? null;
 }
 
-export function getProgressieDay(weekNumber: number, dayId: string): ParsedProgressieDay | null {
-  const week = getProgressieWeek(weekNumber);
+export function getProgressieDay(weekNumber: number, dayId: string, clientId?: string): ParsedProgressieDay | null {
+  const week = getProgressieWeek(weekNumber, clientId);
   if (!week) return null;
   return week.days.find((d) => d.dayId === dayId) ?? null;
 }

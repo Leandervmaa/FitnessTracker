@@ -71,7 +71,7 @@ async function writeExerciseLogsToWeekSheets(wb: XLSX.WorkBook, clientId: string
 
     for (const log of logs) {
       // Find the exercise name
-      const workout = getWorkoutById(log.workoutId);
+      const workout = getWorkoutById(log.workoutId, clientId);
       const exerciseName = workout?.exercises.find((e) => e.id === log.exerciseId)?.name;
       if (!exerciseName) continue;
 

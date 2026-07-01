@@ -26,6 +26,12 @@ if (!fs.existsSync(resolvedExcelPath)) {
 }
 export const EXCEL_PATH = resolvedExcelPath;
 
+export function getExcelPath(clientId?: string): string {
+  if (!clientId || clientId === "default-client") return EXCEL_PATH;
+  const safeClientId = clientId.replace(/[^a-zA-Z0-9_-]/g, "_");
+  return path.resolve(path.dirname(EXCEL_PATH), `${safeClientId}.xlsx`);
+}
+
 export interface ParsedExercise {
   id: string;
   name: string;

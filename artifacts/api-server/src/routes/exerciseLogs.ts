@@ -91,7 +91,7 @@ router.post("/", async (req, res) => {
     }
 
     try {
-      const workout = getWorkoutById(workoutId);
+      const workout = getWorkoutById(workoutId, clientId);
       const exerciseName = workout?.exercises.find(e => e.id === exerciseId)?.name || exerciseId;
       const workoutName = workout?.name || workoutId;
       await writeExerciseLogToSheet(weekNumber, workoutName, exerciseName, sets ?? null, reps ?? null, log.weight, notes ?? null);
@@ -138,7 +138,7 @@ router.put("/:id", async (req, res) => {
     }
 
     try {
-      const workout = getWorkoutById(updated.workoutId);
+      const workout = getWorkoutById(updated.workoutId, clientId);
       const exerciseName = workout?.exercises.find(e => e.id === updated.exerciseId)?.name || updated.exerciseId;
       const workoutName = workout?.name || updated.workoutId;
       await writeExerciseLogToSheet(updated.weekNumber, workoutName, exerciseName, updated.sets ?? null, updated.reps ?? null, updated.weight, updated.notes ?? null);

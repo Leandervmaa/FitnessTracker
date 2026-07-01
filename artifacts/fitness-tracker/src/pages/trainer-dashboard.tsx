@@ -32,7 +32,7 @@ const emptyForm = {
 };
 
 export default function TrainerDashboard() {
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
   const { setActiveClientId } = useClient();
   const [, setLocation] = useLocation();
   const [clients, setClients] = useState<ClientRecord[]>([]);
@@ -44,13 +44,18 @@ export default function TrainerDashboard() {
   const [saving, setSaving] = useState(false);
 
   const loadClients = async () => {
+    if (user?.role !== "trainer") return;
     const res = await apiFetch("/api/clients");
     if (res.ok) setClients(await res.json());
   };
 
   useEffect(() => {
+    if (user?.role !== "trainer") {
+      setLocation("/");
+      return;
+    }
     loadClients();
-  }, []);
+  }, [user?.role]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();

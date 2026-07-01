@@ -11,7 +11,7 @@ router.get("/:workoutId", async (req, res) => {
   try {
     const { workoutId } = req.params;
     const clientId = getScopedClientId(req);
-    const workout = getWorkoutById(workoutId);
+    const workout = getWorkoutById(workoutId, clientId);
 
     if (!workout) return void res.status(404).json({ error: "Training niet gevonden" });
 
@@ -39,7 +39,7 @@ router.get("/:workoutId", async (req, res) => {
 
       // If no database log exists for previous week, fetch the sheet values from previous week
       if (!prevLog && prevWeekNumber >= 1) {
-        const prevWeek = getWeek(prevWeekNumber);
+        const prevWeek = getWeek(prevWeekNumber, clientId);
         if (prevWeek) {
           const prevWorkoutId = `w${prevWeekNumber}-${workout.id.split("-").pop()}`;
           const prevWorkoutDef = prevWeek.workouts.find(w => w.id === prevWorkoutId);

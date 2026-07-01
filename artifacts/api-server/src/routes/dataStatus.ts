@@ -1,14 +1,14 @@
 import { Router } from "express";
 import { getDataStatus } from "../services/dataService.js";
-import { EXCEL_PATH } from "../services/excelParser.js";
+import { getScopedClientId } from "../lib/auth.js";
 
 const router = Router();
 
 router.get("/", (req, res) => {
-  const status = getDataStatus();
+  const status = getDataStatus(getScopedClientId(req));
   res.json({
     ...status,
-    excelBestandsPad: EXCEL_PATH,
+    excelBestandsPad: status.excelFilePath,
     uploadInstructies: status.source === "demo"
       ? {
           stap1: "Ga naar de app en open 'Instellingen' via het tandwiel-icoon rechts bovenin.",

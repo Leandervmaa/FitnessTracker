@@ -9,8 +9,8 @@ import { getScopedClientId } from "../lib/auth.js";
 
 const router = Router();
 
-async function syncQuestionsFromData() {
-  const questions = getFeedbackQuestions();
+async function syncQuestionsFromData(clientId: string) {
+  const questions = getFeedbackQuestions(clientId);
   const existing = await db.select().from(feedbackQuestionsTable);
 
   // If questions from Excel differ from DB, resync
@@ -34,7 +34,7 @@ async function syncQuestionsFromData() {
 export const feedbackQuestionsRouter = Router();
 feedbackQuestionsRouter.get("/", async (req, res) => {
   try {
-    const questions = await syncQuestionsFromData();
+    const questions = await syncQuestionsFromData(getScopedClientId(req));
     return void res.json(questions.sort((a, b) => a.order - b.order));
   } catch (err) {
     req.log.error({ err }, "Failed to get feedback questions");
@@ -44,7 +44,7 @@ feedbackQuestionsRouter.get("/", async (req, res) => {
 
 async function syncAnswersForWeek(weekNumber: number, clientId: string) {
   try {
-    const excelAnswers = getFeedbackAnswers().filter((a) => a.weekNumber === weekNumber);
+    const excelAnswers = getFeedbackAnswers(clientId).filter((a) => a.weekNumber === weekNumber);
     if (excelAnswers.length === 0) return;
 
     const existing = await db

@@ -4,6 +4,7 @@ import { ChevronLeft, Upload, CheckCircle2, XCircle, FileSpreadsheet, Trash2, Re
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { apiFetch } from "@/lib/api";
+import { useAuth } from "@/components/auth-context";
 
 interface DataStatus {
   source: "excel" | "demo";
@@ -42,11 +43,13 @@ function useDataStatus() {
 export default function Instellen() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const { user, logout } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const { status, loading, refresh } = useDataStatus();
+  const isTrainer = user?.role === "trainer";
 
   // Load on mount
   useState(() => { refresh(); });
@@ -154,15 +157,17 @@ export default function Instellen() {
           <ChevronLeft className="h-6 w-6" />
         </Button>
         <h1 className="text-xl font-bold text-foreground">Instellingen</h1>
-        <Button variant="ghost" size="icon" className="ml-auto" onClick={refresh} disabled={loading}>
-          <RefreshCw className={`h-5 w-5 ${loading ? "animate-spin" : ""}`} />
-        </Button>
+        {isTrainer && (
+          <Button variant="ghost" size="icon" className="ml-auto" onClick={refresh} disabled={loading}>
+            <RefreshCw className={`h-5 w-5 ${loading ? "animate-spin" : ""}`} />
+          </Button>
+        )}
       </header>
 
       <div className="w-full p-5 flex flex-col gap-5">
 
         {/* Verbindingsstatus kaart */}
-        <div className={`rounded-xl border p-5 flex items-start gap-4 ${
+        {isTrainer && <div className={`rounded-xl border p-5 flex items-start gap-4 ${
           status?.source === "excel"
             ? "bg-green-50 border-green-200 dark:bg-green-950/30 dark:border-green-800"
             : "bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800"
@@ -194,10 +199,10 @@ export default function Instellen() {
               </p>
             )}
           </div>
-        </div>
+        </div>}
 
         {/* Upload sectie */}
-        <div className="bg-card border border-border rounded-xl p-5">
+        {isTrainer && <div className="bg-card border border-border rounded-xl p-5">
           <div className="flex items-center gap-3 mb-4">
             <div className="h-10 w-10 bg-primary/10 rounded-lg flex items-center justify-center">
               <FileSpreadsheet className="h-5 w-5 text-primary" />
@@ -251,7 +256,7 @@ export default function Instellen() {
               {deleting ? "Verwijderen..." : "Bestand verwijderen (terug naar demo)"}
             </Button>
           )}
-        </div>
+        </div>}
 
         {/* Download sectie */}
         <div className="bg-card border border-border rounded-xl p-5">
@@ -290,8 +295,25 @@ export default function Instellen() {
           </Button>
         </div>
 
-        {/* Instructies */}
         <div className="bg-card border border-border rounded-xl p-5">
+          <h2 className="font-bold text-foreground mb-2">Uitloggen</h2>
+          <p className="text-sm text-muted-foreground mb-4">
+            Log uit op dit apparaat.
+          </p>
+          <Button
+            variant="outline"
+            className="w-full h-12 font-bold"
+            onClick={async () => {
+              await logout();
+              setLocation("/");
+            }}
+          >
+            Uitloggen
+          </Button>
+        </div>
+
+        {/* Instructies */}
+        {isTrainer && <div className="bg-card border border-border rounded-xl p-5">
           <h2 className="font-bold text-foreground mb-3">Hoe werkt het?</h2>
           <ol className="space-y-3 text-sm text-muted-foreground">
             <li className="flex gap-2">
@@ -311,10 +333,10 @@ export default function Instellen() {
               <span>Bij een nieuwe versie van de spreadsheet: download opnieuw en upload het vervangende bestand.</span>
             </li>
           </ol>
-        </div>
+        </div>}
 
         {/* Vereiste tabbladen */}
-        <div className="bg-secondary/50 border border-border rounded-xl p-4">
+        {isTrainer && <div className="bg-secondary/50 border border-border rounded-xl p-4">
           <h3 className="font-semibold text-foreground text-sm mb-2">Verwachte tabbladen in het bestand</h3>
           <div className="flex flex-wrap gap-2">
             {["Week 1–12", "Video links", "Voeding", "Feedback", "Logboek"].map(name => (
@@ -323,7 +345,7 @@ export default function Instellen() {
               </span>
             ))}
           </div>
-        </div>
+        </div>}
 
       </div>
     </div>

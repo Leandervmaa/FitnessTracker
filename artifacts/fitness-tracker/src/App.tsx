@@ -52,7 +52,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={Landing} />
-      <Route path="/trainer" component={TrainerDashboard} />
+      <Route path="/trainer" component={TrainerRoute} />
       <Route path="/trainingen" component={TrainingList} />
       <Route path="/trainingen/:workoutId" component={TrainingDetail} />
       <Route path="/dagboek" component={NutritionList} />
@@ -64,6 +64,14 @@ function Router() {
       <Route component={NotFound} />
     </Switch>
   );
+}
+
+function TrainerRoute() {
+  const { user } = useAuth();
+  if (user?.role !== "trainer") {
+    return <Home />;
+  }
+  return <TrainerDashboard />;
 }
 
 /** Activates SSE connection — must be inside QueryClientProvider */
