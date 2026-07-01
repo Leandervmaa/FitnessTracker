@@ -13,12 +13,20 @@ import XLSX from "xlsx";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { asc, eq } from "drizzle-orm";
 import { db } from "@workspace/db";
-import { exerciseLogsTable, nutritionEntriesTable, feedbackAnswersTable } from "@workspace/db";
+import {
+  exerciseLogsTable,
+  nutritionEntriesTable,
+  feedbackAnswersTable,
+  plannedWorkoutsTable,
+  plannedWorkoutExercisesTable,
+  exerciseSetLogsTable,
+  nutritionTargetsTable,
+} from "@workspace/db";
 import { logger } from "../lib/logger.js";
-import { EXCEL_PATH } from "./excelParser.js";
+import { EXCEL_PATH, getExcelPath } from "./excelParser.js";
 import { getWorkoutById, getAllWeekNumbers, getWeek } from "./dataService.js";
-import { eq } from "drizzle-orm";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -304,23 +312,29 @@ async function writeFeedbackAnswers(wb: XLSX.WorkBook, clientId: string): Promis
   }
 }
 
-// ─── main export ─────────────────────────────────────────────────────────────
+// ─── main export (legacy: merges into source Excel) ──────────────────────────
 
 /**
  * Generates an updated Excel workbook with all logged data written back.
+ * Uses the client-specific Excel file as base, or the default if not found.
  * Returns the workbook as a Buffer for download.
- * If no source Excel file exists, creates a fresh workbook.
  */
 export async function generateExportExcel(clientId: string): Promise<Buffer> {
   let wb: XLSX.WorkBook;
 
-  if (fs.existsSync(EXCEL_PATH)) {
-    wb = XLSX.readFile(EXCEL_PATH);
-    logger.info("Loaded existing Excel file for export");
+  const clientExcelPath = getExcelPath(clientId);
+  const sourcePath = fs.existsSync(clientExcelPath)
+    ? clientExcelPath
+    : fs.existsSync(EXCEL_PATH)
+    ? EXCEL_PATH
+    : null;
+
+  if (sourcePath) {
+    wb = XLSX.readFile(sourcePath);
+    logger.info({ clientId, sourcePath }, "Loaded existing Excel file for export");
   } else {
-    // No source file — create a minimal workbook with logged data only
     wb = XLSX.utils.book_new();
-    logger.info("No source Excel, creating export from scratch");
+    logger.info({ clientId }, "No source Excel, creating export from scratch");
   }
 
   try {
@@ -342,6 +356,131 @@ export async function generateExportExcel(clientId: string): Promise<Buffer> {
   }
 
   const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
-  logger.info("Export Excel generated successfully");
+  logger.info({ clientId }, "Export Excel generated successfully");
   return buffer;
+}
+
+// ─── weekplan export (DB-first: exports planned workouts + set logs) ──────────
+
+/**
+ * Generates a fresh Excel workbook from the database containing:
+ *  - One sheet per week with planned workouts, exercises and set logs.
+ *  - A summary sheet with all weeks.
+ *  - A nutrition targets sheet.
+ * Data is scoped to the given clientId, so each client has their own data.
+ */
+export async function generateWeekplanExcel(clientId: string): Promise<Buffer> {
+  const wb = XLSX.utils.book_new();
+
+  // Fetch all planned workouts for this client
+  const workouts = await db
+    .select()
+    .from(plannedWorkoutsTable)
+    .where(eq(plannedWorkoutsTable.clientId, clientId))
+    .orderBy(asc(plannedWorkoutsTable.weekNumber), asc(plannedWorkoutsTable.sortOrder));
+
+  if (workouts.length === 0) {
+    // Return workbook with empty summary if no data
+    const emptySheet = XLSX.utils.aoa_to_sheet([["Nog geen weekplanning aangemaakt."]]);
+    XLSX.utils.book_append_sheet(wb, emptySheet, "Overzicht");
+    return XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
+  }
+
+  // Fetch all exercises and set logs for this client
+  const exercises = await db
+    .select()
+    .from(plannedWorkoutExercisesTable)
+    .where(eq(plannedWorkoutExercisesTable.clientId, clientId))
+    .orderBy(asc(plannedWorkoutExercisesTable.weekNumber), asc(plannedWorkoutExercisesTable.sortOrder));
+
+  const setLogs = await db
+    .select()
+    .from(exerciseSetLogsTable)
+    .where(eq(exerciseSetLogsTable.clientId, clientId))
+    .orderBy(asc(exerciseSetLogsTable.weekNumber), asc(exerciseSetLogsTable.setNumber));
+
+  const nutritionTargets = await db
+    .select()
+    .from(nutritionTargetsTable)
+    .where(eq(nutritionTargetsTable.clientId, clientId));
+
+  // Group by week number
+  const weekNumbers = Array.from(new Set(workouts.map((w) => w.weekNumber))).sort((a, b) => a - b);
+
+  const exercisesByWorkout = new Map<string, typeof exercises>();
+  for (const ex of exercises) {
+    const list = exercisesByWorkout.get(ex.workoutId) ?? [];
+    list.push(ex);
+    exercisesByWorkout.set(ex.workoutId, list);
+  }
+
+  const logsByExercise = new Map<string, typeof setLogs>();
+  for (const log of setLogs) {
+    const list = logsByExercise.get(log.plannedExerciseId) ?? [];
+    list.push(log);
+    logsByExercise.set(log.plannedExerciseId, list);
+  }
+
+  // Summary sheet
+  const summaryRows: (string | number)[][] = [
+    ["Week", "Trainingen", "Oefeningen", "Sets gepland", "Sets ingevuld", "Afronding %"],
+  ];
+
+  for (const weekNum of weekNumbers) {
+    const weekWorkouts = workouts.filter((w) => w.weekNumber === weekNum);
+    const weekExercises = exercises.filter((e) => e.weekNumber === weekNum);
+    const plannedSets = weekExercises.reduce((sum, e) => sum + (e.sets ?? 0), 0);
+    const completedSets = setLogs.filter((l) => l.weekNumber === weekNum).length;
+    const pct = plannedSets > 0 ? Math.round((completedSets / plannedSets) * 100) : 0;
+    summaryRows.push([weekNum, weekWorkouts.length, weekExercises.length, plannedSets, completedSets, `${pct}%`]);
+  }
+
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summaryRows), "Overzicht");
+
+  // One sheet per week
+  for (const weekNum of weekNumbers) {
+    const weekWorkouts = workouts.filter((w) => w.weekNumber === weekNum);
+    const sheetRows: (string | number)[][] = [[`Week ${weekNum}`]];
+
+    for (const workout of weekWorkouts) {
+      sheetRows.push([]);
+      sheetRows.push([workout.name, workout.dayLabel]);
+      sheetRows.push(["Oefening", "Sets", "Rep Range", "RPE", "Notities", "Set 1 Gewicht", "Set 1 Reps", "Set 2 Gewicht", "Set 2 Reps", "Set 3 Gewicht", "Set 3 Reps", "Set 4 Gewicht", "Set 4 Reps", "Set 5 Gewicht", "Set 5 Reps"]);
+
+      const workoutExercises = (exercisesByWorkout.get(workout.id) ?? []).sort((a, b) => a.sortOrder - b.sortOrder);
+      for (const ex of workoutExercises) {
+        const logs = (logsByExercise.get(ex.id) ?? []).sort((a, b) => a.setNumber - b.setNumber);
+        const row: (string | number)[] = [
+          ex.name,
+          ex.sets ?? "",
+          ex.repRange ?? "",
+          ex.targetRpe ?? "",
+          ex.notes ?? "",
+        ];
+        // Up to 5 sets
+        for (let s = 1; s <= 5; s++) {
+          const log = logs.find((l) => l.setNumber === s);
+          row.push(log?.weight ?? "");
+          row.push(log?.reps ?? "");
+        }
+        sheetRows.push(row);
+      }
+    }
+
+    const safeSheetName = `Week ${weekNum}`.slice(0, 31);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sheetRows), safeSheetName);
+  }
+
+  // Nutrition targets sheet
+  if (nutritionTargets.length > 0) {
+    const target = nutritionTargets[0];
+    const nutRows: (string | number | null)[][] = [
+      ["Doel", "Kcal", "Eiwit (g)", "Koolhydraten (g)", "Vet (g)", "Water (ml)"],
+      [target.dayLabel ?? "Dagelijks", target.kcal ?? "", target.proteinG ?? "", target.carbsG ?? "", target.fatG ?? "", target.waterMl ?? ""],
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(nutRows), "Voedingsdoel");
+  }
+
+  logger.info({ clientId, weeks: weekNumbers.length }, "Weekplan Excel generated");
+  return XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
 }

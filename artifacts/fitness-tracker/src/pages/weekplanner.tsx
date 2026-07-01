@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, ArrowUp, ChevronLeft, Copy, Dumbbell, Plus, Save, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronLeft, Copy, Download, Dumbbell, Plus, Save, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -96,6 +96,28 @@ export default function WeekplannerPage() {
   const [templateId, setTemplateId] = useState("");
   const [targets, setTargets] = useState<NutritionTarget[]>([]);
   const [error, setError] = useState("");
+  const [downloading, setDownloading] = useState(false);
+
+  const downloadWeekplan = async () => {
+    setDownloading(true);
+    try {
+      const res = await apiFetch("/api/export/weekplan", {
+        headers: activeClientId ? { "x-client-id": activeClientId } : {},
+      });
+      if (!res.ok) throw new Error("Export mislukt");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Weekplanning_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setError("Excel export mislukt. Probeer het opnieuw.");
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   const { data: plannedWeeks } = useQuery<PlannedWeeks>({
     queryKey: ["planned-weeks", activeClientId],
@@ -419,6 +441,15 @@ export default function WeekplannerPage() {
             <h1 className="text-xl font-black text-foreground">Weekplanner</h1>
             <p className="text-xs text-muted-foreground">Je maakt of bewerkt week {plannerWeekNumber}</p>
           </div>
+          <Button
+            variant="outline"
+            onClick={downloadWeekplan}
+            disabled={downloading}
+            className="h-10 font-bold"
+          >
+            <Download className="h-4 w-4 mr-2" />
+            {downloading ? "Exporteren..." : "Exporteer Excel"}
+          </Button>
           <Button
             variant="outline"
             onClick={() => chooseWeek(plannedWeeks?.nextWeekNumber || plannerWeekNumber + 1)}

@@ -1,5 +1,4 @@
 import { Router } from "express";
-import type { Request } from "express";
 import { and, asc, eq } from "drizzle-orm";
 import { db } from "@workspace/db";
 import {
@@ -14,46 +13,9 @@ import {
 import { getScopedClientId, requireTrainer } from "../lib/auth.js";
 import { randomId } from "../services/identityService.js";
 import { getWeekPlan, getWorkoutPlan } from "../services/planningService.js";
-import {
-  syncNutritionTargetsToSheet,
-  syncPlannedWeekToSheet,
-  writePlannedSetLogToSheet,
-} from "../services/planningSheetService.js";
 
 const router = Router();
 const DAILY_TARGET_LABEL = "Dagelijks";
-
-function clean(value: unknown): string | null {
-  const text = String(value || "").trim();
-  return text || null;
-}
-
-function param(value: string | string[] | undefined): string {
-  return Array.isArray(value) ? value[0] || "" : value || "";
-}
-
-function intValue(value: unknown, fallback = 0): number {
-  const num = Number(value);
-  return Number.isFinite(num) ? Math.round(num) : fallback;
-}
-
-function numberString(value: unknown): string | null {
-  if (value === null || value === undefined || value === "") return null;
-  const num = Number(String(value).replace(",", "."));
-  return Number.isFinite(num) ? String(num) : null;
-}
-
-function syncWeek(req: Request, clientId: string, weekNumber: number) {
-  void syncPlannedWeekToSheet(clientId, weekNumber).catch((err) => {
-    req.log.warn({ err, clientId, weekNumber }, "Failed to sync planned week to sheet");
-  });
-}
-
-function syncNutrition(req: Request, clientId: string) {
-  void syncNutritionTargetsToSheet(clientId).catch((err) => {
-    req.log.warn({ err, clientId }, "Failed to sync nutrition targets to sheet");
-  });
-}
 
 async function findWorkoutForClient(clientId: string, workoutId: string) {
   const [workout] = await db
@@ -363,7 +325,6 @@ router.post("/workouts/:workoutId/exercises", requireTrainer, async (req, res) =
       })
       .returning();
 
-    syncWeek(req, clientId, workout.weekNumber);
     return void res.status(201).json(created);
   } catch (err) {
     req.log.error({ err }, "Failed to add planned exercise");
@@ -395,7 +356,6 @@ router.put("/exercises/:exerciseId", requireTrainer, async (req, res) => {
       .where(eq(plannedWorkoutExercisesTable.id, existing.id))
       .returning();
 
-    syncWeek(req, clientId, updated.weekNumber);
     return void res.json(updated);
   } catch (err) {
     req.log.error({ err }, "Failed to update planned exercise");
@@ -415,7 +375,6 @@ router.delete("/exercises/:exerciseId", requireTrainer, async (req, res) => {
     await db.delete(exerciseSetLogsTable).where(eq(exerciseSetLogsTable.plannedExerciseId, existing.id));
     await db.delete(plannedWorkoutExercisesTable).where(eq(plannedWorkoutExercisesTable.id, existing.id));
 
-    syncWeek(req, clientId, existing.weekNumber);
     return void res.status(204).send();
   } catch (err) {
     req.log.error({ err }, "Failed to delete planned exercise");
@@ -471,10 +430,6 @@ router.post("/set-logs", async (req, res) => {
             ...values,
           })
           .returning();
-
-    void writePlannedSetLogToSheet({ clientId, log, workoutName: workout.name, exerciseName: exercise.name }).catch((err) => {
-      req.log.warn({ err, clientId }, "Failed to write planned set log to sheet");
-    });
 
     return void res.status(existing ? 200 : 201).json(log);
   } catch (err) {
@@ -537,7 +492,6 @@ router.put("/nutrition-targets", requireTrainer, async (req, res) => {
       ...values,
     });
 
-    syncNutrition(req, clientId);
     const updated = await db
       .select()
       .from(nutritionTargetsTable)

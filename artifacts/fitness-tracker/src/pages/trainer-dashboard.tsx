@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
-import { BookOpen, CalendarDays, FileSpreadsheet, Link as LinkIcon, LogOut, Plus, Search, UserRound, Pencil, PlayCircle, Upload } from "lucide-react";
+import { BookOpen, CalendarDays, Download, FileSpreadsheet, Link as LinkIcon, LogOut, Plus, Search, UserRound, Pencil, PlayCircle, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -42,6 +42,28 @@ export default function TrainerDashboard() {
   const [dataFile, setDataFile] = useState<File | null>(null);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [downloadingClient, setDownloadingClient] = useState<string | null>(null);
+
+  const downloadClientExcel = async (clientId: string, clientName: string) => {
+    setDownloadingClient(clientId);
+    try {
+      const res = await apiFetch("/api/export/weekplan", {
+        headers: { "x-client-id": clientId },
+      });
+      if (!res.ok) throw new Error("Export mislukt");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Weekplanning_${clientName.replace(/\s+/g, "_")}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      // no-op: silently fail
+    } finally {
+      setDownloadingClient(null);
+    }
+  };
 
   const loadClients = async () => {
     if (user?.role !== "trainer") return;
@@ -202,6 +224,15 @@ export default function TrainerDashboard() {
                 >
                   <CalendarDays className="h-4 w-4 mr-2" />
                   Weekplanner
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => downloadClientExcel(client.id, client.name)}
+                  disabled={downloadingClient === client.id}
+                  title="Weekplanning exporteren als Excel"
+                >
+                  <Download className="h-4 w-4" />
                 </Button>
                 <Button variant="outline" size="icon" onClick={() => openEdit(client)}>
                   <Pencil className="h-4 w-4" />
