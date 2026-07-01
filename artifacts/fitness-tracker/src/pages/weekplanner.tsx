@@ -239,6 +239,11 @@ export default function WeekplannerPage() {
     setPlannerWeekNumber(plannedWeeks.nextWeekNumber || 1);
   }, [plannedWeeks, weekWasChosen]);
 
+  useEffect(() => {
+    setWeekWasChosen(false);
+    setPlannerWeekNumber(1);
+  }, [activeClientId]);
+
   // ─── Derived data ──────────────────────────────────────────────────────────
 
   const filteredLibrary = useMemo(() => {
@@ -576,6 +581,7 @@ export default function WeekplannerPage() {
   const sortedTemplateExercises = editingTemplate
     ? [...editingTemplate.exercises].sort((a, b) => a.sortOrder - b.sortOrder)
     : [];
+  const nextWeekNumber = plannedWeeks?.nextWeekNumber || plannerWeekNumber + 1;
 
   return (
     <div className="min-h-[100dvh] w-full bg-background">
@@ -606,10 +612,10 @@ export default function WeekplannerPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => chooseWeek(plannedWeeks?.nextWeekNumber || plannerWeekNumber + 1)}
+              onClick={() => chooseWeek(nextWeekNumber)}
               className="h-9 font-bold whitespace-nowrap"
             >
-              Nieuwe week
+              Nieuwe week {nextWeekNumber}
             </Button>
             <Button
               variant="outline"

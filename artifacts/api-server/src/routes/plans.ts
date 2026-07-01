@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import { and, asc, eq } from "drizzle-orm";
 import { db } from "@workspace/db";
 import {
@@ -13,6 +13,11 @@ import {
 import { getScopedClientId, requireTrainer } from "../lib/auth.js";
 import { randomId } from "../services/identityService.js";
 import { getWeekPlan, getWorkoutPlan } from "../services/planningService.js";
+import {
+  syncClientDataSheets,
+  syncClientWorkbook,
+  writePlannedSetLogToSheet,
+} from "../services/planningSheetService.js";
 
 const router = Router();
 const DAILY_TARGET_LABEL = "Dagelijks";
@@ -37,6 +42,17 @@ function numberString(value: unknown): string | null {
   return Number.isFinite(num) ? String(num) : null;
 }
 
+function syncWorkbook(req: Request, clientId: string, weekNumber?: number) {
+  void syncClientWorkbook(clientId, weekNumber).catch((err) => {
+    req.log.warn({ err, clientId, weekNumber }, "Failed to sync client workbook to sheet");
+  });
+}
+
+function syncDataSheets(req: Request, clientId: string) {
+  void syncClientDataSheets(clientId).catch((err) => {
+    req.log.warn({ err, clientId }, "Failed to sync client data sheets to sheet");
+  });
+}
 
 async function findWorkoutForClient(clientId: string, workoutId: string) {
   const [workout] = await db
@@ -163,7 +179,7 @@ router.post("/week/:weekNumber/workouts", requireTrainer, async (req, res) => {
       })
       .returning();
 
-    syncWeek(req, clientId, weekNumber);
+    syncWorkbook(req, clientId, weekNumber);
     return void res.status(201).json(workout);
   } catch (err) {
     req.log.error({ err }, "Failed to create planned workout");
@@ -188,7 +204,7 @@ router.post("/week/:weekNumber/workouts/from-template", requireTrainer, async (r
     });
 
     if (!workout) return void res.status(404).json({ error: "Template niet gevonden" });
-    syncWeek(req, clientId, weekNumber);
+    syncWorkbook(req, clientId, weekNumber);
     return void res.status(201).json(workout);
   } catch (err) {
     req.log.error({ err }, "Failed to create workout from template");
@@ -238,7 +254,7 @@ router.post("/week/:weekNumber/copy", requireTrainer, async (req, res) => {
       }
     }
 
-    syncWeek(req, clientId, weekNumber);
+    syncWorkbook(req, clientId, weekNumber);
     return void res.status(201).json({ weekNumber, workouts: await getWeekPlan(clientId, weekNumber) });
   } catch (err) {
     req.log.error({ err }, "Failed to copy planned week");
@@ -263,7 +279,7 @@ router.put("/workouts/:workoutId", requireTrainer, async (req, res) => {
       .where(and(eq(plannedWorkoutsTable.id, existing.id), eq(plannedWorkoutsTable.clientId, clientId)))
       .returning();
 
-    syncWeek(req, clientId, updated.weekNumber);
+    syncWorkbook(req, clientId, updated.weekNumber);
     return void res.json(updated);
   } catch (err) {
     req.log.error({ err }, "Failed to update planned workout");
@@ -281,7 +297,7 @@ router.delete("/workouts/:workoutId", requireTrainer, async (req, res) => {
     await db.delete(plannedWorkoutExercisesTable).where(eq(plannedWorkoutExercisesTable.workoutId, existing.id));
     await db.delete(plannedWorkoutsTable).where(eq(plannedWorkoutsTable.id, existing.id));
 
-    syncWeek(req, clientId, existing.weekNumber);
+    syncWorkbook(req, clientId, existing.weekNumber);
     return void res.status(204).send();
   } catch (err) {
     req.log.error({ err }, "Failed to delete planned workout");
@@ -346,6 +362,7 @@ router.post("/workouts/:workoutId/exercises", requireTrainer, async (req, res) =
       })
       .returning();
 
+    syncWorkbook(req, clientId, workout.weekNumber);
     return void res.status(201).json(created);
   } catch (err) {
     req.log.error({ err }, "Failed to add planned exercise");
@@ -377,6 +394,7 @@ router.put("/exercises/:exerciseId", requireTrainer, async (req, res) => {
       .where(eq(plannedWorkoutExercisesTable.id, existing.id))
       .returning();
 
+    syncWorkbook(req, clientId, updated.weekNumber);
     return void res.json(updated);
   } catch (err) {
     req.log.error({ err }, "Failed to update planned exercise");
@@ -396,6 +414,7 @@ router.delete("/exercises/:exerciseId", requireTrainer, async (req, res) => {
     await db.delete(exerciseSetLogsTable).where(eq(exerciseSetLogsTable.plannedExerciseId, existing.id));
     await db.delete(plannedWorkoutExercisesTable).where(eq(plannedWorkoutExercisesTable.id, existing.id));
 
+    syncWorkbook(req, clientId, existing.weekNumber);
     return void res.status(204).send();
   } catch (err) {
     req.log.error({ err }, "Failed to delete planned exercise");
@@ -451,6 +470,15 @@ router.post("/set-logs", async (req, res) => {
             ...values,
           })
           .returning();
+
+    void writePlannedSetLogToSheet({
+      clientId,
+      log,
+      workoutName: workout.name,
+      exerciseName: exercise.name,
+    }).catch((err) => {
+      req.log.warn({ err, clientId }, "Failed to sync set log to sheet");
+    });
 
     return void res.status(existing ? 200 : 201).json(log);
   } catch (err) {
@@ -512,6 +540,8 @@ router.put("/nutrition-targets", requireTrainer, async (req, res) => {
       dayLabel: DAILY_TARGET_LABEL,
       ...values,
     });
+
+    syncDataSheets(req, clientId);
 
     const updated = await db
       .select()

@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import { db } from "@workspace/db";
 import { feedbackQuestionsTable, feedbackAnswersTable } from "@workspace/db";
 import { SaveFeedbackAnswerBody, GetFeedbackAnswersQueryParams } from "@workspace/api-zod";
@@ -7,9 +7,16 @@ import { eq, and } from "drizzle-orm";
 import { logger } from "../lib/logger.js";
 import { getScopedClientId } from "../lib/auth.js";
 import { getClientLiveSheet } from "../services/clientSheetService.js";
+import { syncFeedbackToSheet } from "../services/planningSheetService.js";
 import { writeFeedbackToSheet } from "../services/sheetsParser.js";
 
 const router = Router();
+
+function syncFeedback(req: Request, clientId: string) {
+  void syncFeedbackToSheet(clientId).catch((err) => {
+    req.log.warn({ err, clientId }, "Failed to sync feedback sheet");
+  });
+}
 
 async function syncQuestionsFromData(clientId: string) {
   const questions = getFeedbackQuestions(clientId);
@@ -135,6 +142,8 @@ router.post("/", async (req, res) => {
     } catch (e) {
       req.log.warn({ err: e }, "Failed to write feedback to live sheet");
     }
+
+    syncFeedback(req, clientId);
 
     return void res.status(201).json(result);
   } catch (err) {

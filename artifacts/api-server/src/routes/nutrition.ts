@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import { db } from "@workspace/db";
 import { nutritionEntriesTable } from "@workspace/db";
 import { CreateNutritionEntryBody, UpdateNutritionEntryBody, UpdateNutritionEntryParams, GetNutritionEntriesQueryParams } from "@workspace/api-zod";
@@ -6,9 +6,16 @@ import { getNutritionTarget, getProgressieWeek } from "../services/dataService.j
 import { eq, and } from "drizzle-orm";
 import { getScopedClientId } from "../lib/auth.js";
 import { getClientLiveSheet } from "../services/clientSheetService.js";
+import { syncClientDataSheets } from "../services/planningSheetService.js";
 import { writeNutritionEntryToSheet } from "../services/sheetsParser.js";
 
 const router = Router();
+
+function syncDataSheets(req: Request, clientId: string) {
+  void syncClientDataSheets(clientId).catch((err) => {
+    req.log.warn({ err, clientId }, "Failed to sync nutrition data sheets");
+  });
+}
 
 router.get("/target", async (req, res) => {
   try {
@@ -151,6 +158,8 @@ router.post("/", async (req, res) => {
       req.log.warn({ err: e }, "Failed to write nutrition to live sheet");
     }
 
+    syncDataSheets(req, clientId);
+
     return void res.status(201).json({
       ...entry,
       kcal: entry.kcal ? parseFloat(entry.kcal) : null,
@@ -206,6 +215,8 @@ router.put("/:id", async (req, res) => {
     } catch (e) {
       req.log.warn({ err: e }, "Failed to write nutrition update to live sheet");
     }
+
+    syncDataSheets(req, clientId);
 
     return void res.json({
       ...updated,

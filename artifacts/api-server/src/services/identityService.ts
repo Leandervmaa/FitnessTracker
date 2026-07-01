@@ -228,16 +228,6 @@ export async function ensureIdentitySchema(): Promise<void> {
     )
     .onConflictDoNothing();
 
-  const [defaultClient] = await db.select().from(clientsTable).where(eq(clientsTable.id, DEFAULT_CLIENT_ID));
-  if (!defaultClient) {
-    await db.insert(clientsTable).values({
-      id: DEFAULT_CLIENT_ID,
-      name: process.env.DEFAULT_CLIENT_NAME || "Eerste klant",
-      status: "active",
-      goal: "Bestaand traject uit de huidige app",
-    });
-  }
-
   const trainerUsername = normalizeUsername(process.env.TRAINER_USERNAME || "trainer");
   const [trainer] = await db.select().from(usersTable).where(eq(usersTable.username, trainerUsername));
   if (!trainer) {
@@ -251,22 +241,34 @@ export async function ensureIdentitySchema(): Promise<void> {
     logger.warn({ username: trainerUsername }, "Default trainer account created. Set TRAINER_PASSWORD in production.");
   }
 
-  const defaultClientUsername = normalizeUsername(process.env.DEFAULT_CLIENT_USERNAME || "klant");
-  const [defaultClientUser] = await db.select().from(usersTable).where(eq(usersTable.clientId, DEFAULT_CLIENT_ID));
-  const [existingDefaultUsername] = await db.select().from(usersTable).where(eq(usersTable.username, defaultClientUsername));
-  if (!defaultClientUser && !existingDefaultUsername) {
-    await db.insert(usersTable).values({
-      id: "default-client-user",
-      role: "client",
-      username: defaultClientUsername,
-      displayName: process.env.DEFAULT_CLIENT_DISPLAY_NAME || "Eerste klant",
-      passwordHash: hashPassword(process.env.DEFAULT_CLIENT_PASSWORD || "welkom"),
-      clientId: DEFAULT_CLIENT_ID,
-    });
-    logger.warn(
-      { username: defaultClientUsername },
-      "Default client account created. Set DEFAULT_CLIENT_PASSWORD in production.",
-    );
+  if (process.env.CREATE_DEFAULT_CLIENT === "true") {
+    const [defaultClient] = await db.select().from(clientsTable).where(eq(clientsTable.id, DEFAULT_CLIENT_ID));
+    if (!defaultClient) {
+      await db.insert(clientsTable).values({
+        id: DEFAULT_CLIENT_ID,
+        name: process.env.DEFAULT_CLIENT_NAME || "Eerste klant",
+        status: "active",
+        goal: "Bestaand traject uit de huidige app",
+      });
+    }
+
+    const defaultClientUsername = normalizeUsername(process.env.DEFAULT_CLIENT_USERNAME || "klant");
+    const [defaultClientUser] = await db.select().from(usersTable).where(eq(usersTable.clientId, DEFAULT_CLIENT_ID));
+    const [existingDefaultUsername] = await db.select().from(usersTable).where(eq(usersTable.username, defaultClientUsername));
+    if (!defaultClientUser && !existingDefaultUsername) {
+      await db.insert(usersTable).values({
+        id: "default-client-user",
+        role: "client",
+        username: defaultClientUsername,
+        displayName: process.env.DEFAULT_CLIENT_DISPLAY_NAME || "Eerste klant",
+        passwordHash: hashPassword(process.env.DEFAULT_CLIENT_PASSWORD || "welkom"),
+        clientId: DEFAULT_CLIENT_ID,
+      });
+      logger.warn(
+        { username: defaultClientUsername },
+        "Default client account created. Set DEFAULT_CLIENT_PASSWORD in production.",
+      );
+    }
   }
 }
 

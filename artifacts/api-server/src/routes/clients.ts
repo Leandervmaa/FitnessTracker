@@ -1,14 +1,32 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import { eq } from "drizzle-orm";
 import { db } from "@workspace/db";
 import { clientsTable, usersTable } from "@workspace/db";
 import { createClientWithUser, hashPassword, publicUser } from "../services/identityService.js";
 import { requireTrainer } from "../lib/auth.js";
 import { extractGoogleSheetId } from "../services/clientSheetService.js";
+import { syncClientDataSheets } from "../services/planningSheetService.js";
 
 const router = Router();
 
 router.use(requireTrainer);
+
+function syncInitialClientSheets(req: Request, clientId: string) {
+  void syncClientDataSheets(clientId).catch((err) => {
+    req.log.warn({ err, clientId }, "Failed to sync initial client sheets");
+  });
+}
+
+async function findClientWithSheet(sheetId: string, exceptClientId?: string) {
+  const clients = await db.select().from(clientsTable);
+  return (
+    clients.find((client) => {
+      if (exceptClientId && client.id === exceptClientId) return false;
+      const clientSheetId = client.liveSheetId || extractGoogleSheetId(client.liveSheetUrl);
+      return clientSheetId === sheetId;
+    }) ?? null
+  );
+}
 
 router.get("/", async (req, res) => {
   try {
@@ -38,6 +56,15 @@ router.post("/", async (req, res) => {
       return void res.status(400).json({ error: "Naam, gebruikersnaam en wachtwoord zijn verplicht" });
     }
 
+    const liveSheetUrl = req.body?.liveSheetUrl ? String(req.body.liveSheetUrl).trim() : null;
+    const liveSheetId = extractGoogleSheetId(liveSheetUrl);
+    if (liveSheetId) {
+      const existingClient = await findClientWithSheet(liveSheetId);
+      if (existingClient) {
+        return void res.status(409).json({ error: `Deze sheet is al gekoppeld aan ${existingClient.name}` });
+      }
+    }
+
     const result = await createClientWithUser({
       name,
       username,
@@ -47,9 +74,11 @@ router.post("/", async (req, res) => {
       goal: req.body?.goal ? String(req.body.goal).trim() : null,
       notes: req.body?.notes ? String(req.body.notes).trim() : null,
       liveSheetType: req.body?.liveSheetType ? String(req.body.liveSheetType).trim() : null,
-      liveSheetUrl: req.body?.liveSheetUrl ? String(req.body.liveSheetUrl).trim() : null,
-      liveSheetId: extractGoogleSheetId(req.body?.liveSheetUrl ? String(req.body.liveSheetUrl) : null),
+      liveSheetUrl,
+      liveSheetId,
     });
+
+    syncInitialClientSheets(req, result.client.id);
 
     return void res.status(201).json(result);
   } catch (err: any) {
@@ -64,6 +93,15 @@ router.post("/", async (req, res) => {
 router.put("/:clientId", async (req, res) => {
   try {
     const { clientId } = req.params;
+    const liveSheetUrl = req.body?.liveSheetUrl !== undefined ? String(req.body.liveSheetUrl || "").trim() || null : undefined;
+    const liveSheetId = liveSheetUrl !== undefined ? extractGoogleSheetId(liveSheetUrl) : undefined;
+    if (liveSheetId) {
+      const existingClient = await findClientWithSheet(liveSheetId, clientId);
+      if (existingClient) {
+        return void res.status(409).json({ error: `Deze sheet is al gekoppeld aan ${existingClient.name}` });
+      }
+    }
+
     const [updated] = await db
       .update(clientsTable)
       .set({
@@ -73,14 +111,18 @@ router.put("/:clientId", async (req, res) => {
         goal: req.body?.goal !== undefined ? String(req.body.goal || "").trim() || null : undefined,
         notes: req.body?.notes !== undefined ? String(req.body.notes || "").trim() || null : undefined,
         liveSheetType: req.body?.liveSheetType !== undefined ? String(req.body.liveSheetType || "").trim() || null : undefined,
-        liveSheetUrl: req.body?.liveSheetUrl !== undefined ? String(req.body.liveSheetUrl || "").trim() || null : undefined,
-        liveSheetId: req.body?.liveSheetUrl !== undefined ? extractGoogleSheetId(String(req.body.liveSheetUrl || "")) : undefined,
+        liveSheetUrl,
+        liveSheetId,
         status: req.body?.status ? String(req.body.status).trim() : undefined,
       })
       .where(eq(clientsTable.id, clientId))
       .returning();
 
     if (!updated) return void res.status(404).json({ error: "Klant niet gevonden" });
+
+    if (req.body?.liveSheetUrl !== undefined || req.body?.liveSheetType !== undefined) {
+      syncInitialClientSheets(req, clientId);
+    }
 
     if (req.body?.username || req.body?.password || req.body?.name) {
       const values: Partial<typeof usersTable.$inferInsert> = {};
