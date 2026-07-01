@@ -1,6 +1,7 @@
-import pg from "pg";
+import { createRequire } from "node:module";
 
-const { Pool } = pg;
+const requireFromDbPackage = createRequire(new URL("../../../lib/db/package.json", import.meta.url));
+const { Pool } = requireFromDbPackage("pg");
 
 if (process.env.CONFIRM_RESET_CLIENTS !== "YES") {
   console.error("Stop: zet CONFIRM_RESET_CLIENTS=YES om alle klanten en klantdata te verwijderen.");
@@ -11,8 +12,6 @@ if (!process.env.DATABASE_URL) {
   console.error("Stop: DATABASE_URL ontbreekt.");
   process.exit(1);
 }
-
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 const statements = [
   "DELETE FROM auth_sessions WHERE user_id IN (SELECT id FROM users WHERE role = 'client' OR client_id IS NOT NULL)",
@@ -29,6 +28,7 @@ const statements = [
   "DELETE FROM clients",
 ];
 
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const client = await pool.connect();
 
 try {

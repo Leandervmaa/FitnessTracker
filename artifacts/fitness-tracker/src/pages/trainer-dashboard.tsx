@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
-import { BookOpen, CalendarDays, Download, FileSpreadsheet, Link as LinkIcon, LogOut, Plus, Search, UserRound, Pencil, PlayCircle, Upload } from "lucide-react";
+import { BookOpen, CalendarDays, Download, FileSpreadsheet, Link as LinkIcon, LogOut, Plus, Search, UserRound, Pencil, PlayCircle, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -32,7 +32,7 @@ const emptyForm = {
 
 export default function TrainerDashboard() {
   const { user, logout } = useAuth();
-  const { setActiveClientId } = useClient();
+  const { activeClientId, setActiveClientId } = useClient();
   const [, setLocation] = useLocation();
   const [clients, setClients] = useState<ClientRecord[]>([]);
   const [query, setQuery] = useState("");
@@ -43,6 +43,7 @@ export default function TrainerDashboard() {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [downloadingClient, setDownloadingClient] = useState<string | null>(null);
+  const [deletingClient, setDeletingClient] = useState<string | null>(null);
 
   const downloadClientExcel = async (clientId: string, clientName: string) => {
     setDownloadingClient(clientId);
@@ -160,6 +161,28 @@ export default function TrainerDashboard() {
     setLocation("/");
   };
 
+  const deleteClient = async (client: ClientRecord) => {
+    const confirmed = confirm(
+      `Weet je zeker dat je ${client.name} wilt verwijderen?\n\nAlle klantdata en de klantlogin worden verwijderd. Templates en de oefenbibliotheek blijven bewaard.`,
+    );
+    if (!confirmed) return;
+
+    setDeletingClient(client.id);
+    try {
+      const res = await apiFetch(`/api/clients/${client.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Klant verwijderen mislukt");
+      }
+      if (activeClientId === client.id) setActiveClientId(null);
+      await loadClients();
+    } catch (err: any) {
+      alert(err.message || "Klant verwijderen mislukt");
+    } finally {
+      setDeletingClient(null);
+    }
+  };
+
   return (
     <div className="min-h-[100dvh] w-full bg-background flex flex-col">
       <header className="w-full border-b border-border bg-background/90 backdrop-blur-md sticky top-0 z-10">
@@ -236,6 +259,16 @@ export default function TrainerDashboard() {
                 </Button>
                 <Button variant="outline" size="icon" onClick={() => openEdit(client)}>
                   <Pencil className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => deleteClient(client)}
+                  disabled={deletingClient === client.id}
+                  title="Klant verwijderen"
+                  className="text-destructive hover:text-destructive"
+                >
+                  <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
             </div>

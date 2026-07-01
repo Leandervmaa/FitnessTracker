@@ -236,7 +236,8 @@ export default function WeekplannerPage() {
 
   useEffect(() => {
     if (!plannedWeeks || weekWasChosen) return;
-    setPlannerWeekNumber(plannedWeeks.nextWeekNumber || 1);
+    const existingWeeks = plannedWeeks.weekNumbers || [];
+    setPlannerWeekNumber(existingWeeks.length > 0 ? Math.max(...existingWeeks) : 1);
   }, [plannedWeeks, weekWasChosen]);
 
   useEffect(() => {

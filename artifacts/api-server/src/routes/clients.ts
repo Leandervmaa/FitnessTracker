@@ -1,10 +1,25 @@
 import { Router, type Request } from "express";
-import { eq } from "drizzle-orm";
+import fs from "node:fs";
+import { eq, inArray } from "drizzle-orm";
 import { db } from "@workspace/db";
-import { clientsTable, usersTable } from "@workspace/db";
+import {
+  authSessionsTable,
+  clientsTable,
+  exerciseLogsTable,
+  exerciseSetLogsTable,
+  feedbackAnswersTable,
+  foodLogsTable,
+  nutritionEntriesTable,
+  nutritionTargetsTable,
+  plannedWorkoutExercisesTable,
+  plannedWorkoutsTable,
+  progressPhotosTable,
+  usersTable,
+} from "@workspace/db";
 import { createClientWithUser, hashPassword, publicUser } from "../services/identityService.js";
 import { requireTrainer } from "../lib/auth.js";
 import { extractGoogleSheetId } from "../services/clientSheetService.js";
+import { getExcelPath } from "../services/excelParser.js";
 import { syncClientDataSheets } from "../services/planningSheetService.js";
 
 const router = Router();
@@ -140,6 +155,45 @@ router.put("/:clientId", async (req, res) => {
       return void res.status(409).json({ error: "Deze gebruikersnaam bestaat al" });
     }
     return void res.status(500).json({ error: "Klant bijwerken mislukt" });
+  }
+});
+
+router.delete("/:clientId", async (req, res) => {
+  try {
+    const { clientId } = req.params;
+    const [client] = await db.select().from(clientsTable).where(eq(clientsTable.id, clientId));
+    if (!client) return void res.status(404).json({ error: "Klant niet gevonden" });
+
+    await db.transaction(async (tx) => {
+      const users = await tx.select().from(usersTable).where(eq(usersTable.clientId, clientId));
+      const userIds = users.map((user) => user.id);
+
+      if (userIds.length > 0) {
+        await tx.delete(authSessionsTable).where(inArray(authSessionsTable.userId, userIds));
+      }
+
+      await tx.delete(exerciseSetLogsTable).where(eq(exerciseSetLogsTable.clientId, clientId));
+      await tx.delete(plannedWorkoutExercisesTable).where(eq(plannedWorkoutExercisesTable.clientId, clientId));
+      await tx.delete(plannedWorkoutsTable).where(eq(plannedWorkoutsTable.clientId, clientId));
+      await tx.delete(nutritionTargetsTable).where(eq(nutritionTargetsTable.clientId, clientId));
+      await tx.delete(exerciseLogsTable).where(eq(exerciseLogsTable.clientId, clientId));
+      await tx.delete(nutritionEntriesTable).where(eq(nutritionEntriesTable.clientId, clientId));
+      await tx.delete(feedbackAnswersTable).where(eq(feedbackAnswersTable.clientId, clientId));
+      await tx.delete(progressPhotosTable).where(eq(progressPhotosTable.clientId, clientId));
+      await tx.delete(foodLogsTable).where(eq(foodLogsTable.clientId, clientId));
+      await tx.delete(usersTable).where(eq(usersTable.clientId, clientId));
+      await tx.delete(clientsTable).where(eq(clientsTable.id, clientId));
+    });
+
+    const excelPath = getExcelPath(clientId);
+    if (fs.existsSync(excelPath)) {
+      fs.unlinkSync(excelPath);
+    }
+
+    return void res.status(204).send();
+  } catch (err) {
+    req.log.error({ err }, "Failed to delete client");
+    return void res.status(500).json({ error: "Klant verwijderen mislukt" });
   }
 });
 
