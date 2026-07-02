@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -7,7 +7,8 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { apiFetch, getActiveClientId } from "@/lib/api";
+import { useClient } from "@/components/client-context";
+import { apiFetch } from "@/lib/api";
 
 // Weeks where progress photos are taken
 const PHOTO_WEEKS = [1, 4, 7, 10, 13, 16, 20, 23, 26];
@@ -27,11 +28,6 @@ interface Photo {
   uploadedAt: string;
 }
 
-function photoUrl(photo: Photo) {
-  const clientId = getActiveClientId();
-  return clientId ? `/api/progress-photos/image/${photo.id}?clientId=${encodeURIComponent(clientId)}` : `/api/progress-photos/image/${photo.id}`;
-}
-
 function useAllPhotos() {
   return useQuery<Photo[]>({
     queryKey: ["progress-photos"],
@@ -42,6 +38,92 @@ function useAllPhotos() {
     },
     staleTime: 30_000,
   });
+}
+
+function usePhotoObjectUrl(photoId: number) {
+  const { activeClientId } = useClient();
+  const [src, setSrc] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    let objectUrl: string | null = null;
+
+    setSrc(null);
+    setError(null);
+    setLoading(true);
+
+    apiFetch(`/api/progress-photos/image/${photoId}`)
+      .then(async (res) => {
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || "Foto laden mislukt");
+        }
+
+        const blob = await res.blob();
+        objectUrl = URL.createObjectURL(blob);
+
+        if (cancelled) {
+          URL.revokeObjectURL(objectUrl);
+          return;
+        }
+
+        setSrc(objectUrl);
+        setLoading(false);
+      })
+      .catch((err: Error) => {
+        if (!cancelled) {
+          setError(err.message || "Foto laden mislukt");
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [photoId, activeClientId]);
+
+  return { src, error, loading };
+}
+
+function ProgressPhotoImage({ photo, alt, className }: { photo: Photo; alt: string; className: string }) {
+  const { src, error, loading } = usePhotoObjectUrl(photo.id);
+  const [renderError, setRenderError] = useState(false);
+
+  useEffect(() => {
+    setRenderError(false);
+  }, [src]);
+
+  if (loading) {
+    return (
+      <div className={`${className} bg-secondary/40 flex items-center justify-center`}>
+        <div className="h-5 w-5 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+      </div>
+    );
+  }
+
+  if (error || renderError || !src) {
+    return (
+      <div className={`${className} bg-secondary/50 flex flex-col items-center justify-center p-2 text-center`}>
+        <Camera className="h-5 w-5 text-muted-foreground/50 mb-1" />
+        <span className="text-[10px] font-semibold text-muted-foreground">Foto niet zichtbaar</span>
+        <span className="max-w-full truncate text-[9px] text-muted-foreground/70">{photo.filename}</span>
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt={alt}
+      className={className}
+      loading="lazy"
+      decoding="async"
+      onError={() => setRenderError(true)}
+    />
+  );
 }
 
 function useUploadPhoto() {
@@ -253,8 +335,8 @@ function PhotoSlot({ weekNumber, angle, label, photo }: {
 
       {photo ? (
         <div className="relative w-full group">
-          <img
-            src={photoUrl(photo)}
+          <ProgressPhotoImage
+            photo={photo}
             alt={`Week ${weekNumber} ${label}`}
             className="w-full aspect-[3/4] object-cover"
           />
@@ -375,8 +457,8 @@ function CompareView({ photos, weekA, weekB, onChangeA, onChangeB }: {
                   return (
                     <div key={week} className="relative rounded-xl overflow-hidden border border-border bg-secondary/30 aspect-[3/4]">
                       {photo ? (
-                        <img
-                          src={photoUrl(photo)}
+                        <ProgressPhotoImage
+                          photo={photo}
                           alt={`Week ${week} ${angle.label}`}
                           className="w-full h-full object-cover"
                         />

@@ -264,7 +264,7 @@ function AddFoodPanel({ weekNumber, day, dayLabel, initialFoodId, onClose }: Add
             {preview && (
               <div className="bg-primary/5 border border-primary/20 rounded-xl p-3">
                 <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2">Voedingswaarden</p>
-                <div className="grid grid-cols-4 gap-2 text-center">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
                   {([["kcal", preview.kcal, "text-primary"], ["eiwit", `${preview.eiwit}g`, ""], ["koolh", `${preview.koolh}g`, ""], ["vet", `${preview.vet}g`, ""]] as const).map(([lbl, val, cls]) => (
                     <div key={lbl}>
                       <div className={`text-base font-black ${cls}`}>{val}</div>
@@ -497,7 +497,7 @@ export default function FoodTracker({ weekNumber, day, dayLabel, sheetKcal, targ
       </div>
 
       {/* ② Buttons */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Button
           variant="outline"
           className="h-12 font-bold border-2 border-dashed gap-2"
@@ -585,7 +585,7 @@ export default function FoodTracker({ weekNumber, day, dayLabel, sheetKcal, targ
           )}
 
           {(targetProteinG != null || targetCarbsG != null || targetFatG != null) && (
-            <div className="grid grid-cols-3 gap-2 pt-2 mt-2 border-t border-primary/10">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2 mt-2 border-t border-primary/10">
               <MacroBudget label="Eiwit" value={loggedProteinG} target={targetProteinG} />
               <MacroBudget label="Koolh." value={loggedCarbsG} target={targetCarbsG} />
               <MacroBudget label="Vet" value={loggedFatG} target={targetFatG} />

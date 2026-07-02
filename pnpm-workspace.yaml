@@ -72,6 +72,7 @@ onlyBuiltDependencies:
   - '@swc/core'
   - esbuild
   - msw
+  - sharp
   - unrs-resolver
 
 overrides:
@@ -161,3 +162,4 @@ overrides:
 
 allowBuilds:
   esbuild: true
+  sharp: true

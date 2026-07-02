@@ -176,27 +176,29 @@ export default function DagboekPage() {
   const hasSheetData = sheetDays.length > 0;
 
   return (
-    <div className="min-h-[100dvh] w-full bg-background flex flex-col items-center max-w-md mx-auto">
-      <header className="w-full p-4 flex items-center border-b border-border sticky top-0 bg-background/80 backdrop-blur-md z-10">
-        <Button variant="ghost" size="icon" onClick={() => setLocation("/")} className="mr-2">
-          <ChevronLeft className="h-6 w-6" />
-        </Button>
-        <div className="flex-1 flex items-center">
-          <BookOpen className="w-5 h-5 text-primary mr-2" />
-          <h1 className="text-xl font-bold text-foreground">Dagboek</h1>
+    <div className="min-h-[100dvh] w-full bg-background flex flex-col items-center">
+      <header className="w-full border-b border-border sticky top-0 bg-background/80 backdrop-blur-md z-10">
+        <div className="w-full max-w-4xl mx-auto p-4 flex items-center">
+          <Button variant="ghost" size="icon" onClick={() => setLocation("/")} className="mr-2">
+            <ChevronLeft className="h-6 w-6" />
+          </Button>
+          <div className="flex-1 flex items-center min-w-0">
+            <BookOpen className="w-5 h-5 text-primary mr-2 shrink-0" />
+            <h1 className="text-xl font-bold text-foreground truncate">Dagboek</h1>
+          </div>
+          <WeekSelector />
         </div>
-        <WeekSelector />
       </header>
 
       {/* Week overview strip from sheet */}
       {hasSheetData && (
-        <div className="w-full px-4 pt-4">
+        <div className="w-full max-w-4xl px-4 pt-4">
           <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
             <h3 className="text-xs font-bold text-muted-foreground mb-3 flex items-center gap-1.5 uppercase tracking-wider">
               <TrendingUp className="h-3.5 w-3.5 text-primary" />
               Week {selectedWeek} — Gemiddelden uit spreadsheet
             </h3>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {(() => {
                 const filled = sheetDays.filter(d => d.gewicht !== null);
                 const avgGewicht = filled.length > 0 ? (filled.reduce((s, d) => s + (d.gewicht ?? 0), 0) / filled.length).toFixed(1) : "—";
@@ -230,9 +232,9 @@ export default function DagboekPage() {
         </div>
       )}
 
-      <div className="w-full p-4 flex flex-col">
+      <div className="w-full max-w-4xl p-4 flex flex-col">
         <Tabs value={activeDay} onValueChange={setActiveDay} className="w-full">
-          <TabsList className="w-full h-12 p-1 mb-6 flex bg-secondary">
+          <TabsList className="w-full h-12 p-1 mb-6 grid grid-cols-7 bg-secondary">
             {DAYS.map(day => {
               const sheetDay = sheetDays.find(d => d.dayId === day.id);
               const dbEntry = entries?.find(e => e.day === day.id);
@@ -240,7 +242,7 @@ export default function DagboekPage() {
                 <TabsTrigger 
                   key={day.id} 
                   value={day.id}
-                  className="flex-1 h-full rounded-md font-bold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all relative"
+                  className="min-w-0 h-full rounded-md font-bold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all relative"
                 >
                   {day.label}
                   {dbEntry && (
@@ -377,67 +379,66 @@ function DagForm({ day, weekNumber, entry, sheetDay, targetKcal, targetProteinG,
   ];
 
   const isShown = (fieldName: string) => fields.includes(fieldName);
+  const fieldCardClass = "min-w-0 space-y-1.5 rounded-lg border border-border/70 bg-background p-3";
+  const inputClass = "h-12 w-full text-center font-bold";
+  const inputLargeClass = "h-12 w-full text-center font-bold text-lg";
+  const responsiveGridClass = "grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 items-start";
 
   const shownLichaamsmaten = [
     isShown("gewicht") && (
-      <div key="gewicht" className="space-y-1.5">
+      <div key="gewicht" className={fieldCardClass}>
         <Label className="text-xs font-semibold">Gewicht (kg)</Label>
         <Input
           type="number" inputMode="decimal" name="lichaamsgewicht"
           value={formData.lichaamsgewicht} onChange={handleChange}
-          className="h-12 text-center font-bold"
+          className={inputClass}
           placeholder={ph(sheetDay?.gewicht, " kg") || "0.0"}
         />
       </div>
     ),
     isShown("buikomvang") && (
-      <div key="buik" className="space-y-1.5">
+      <div key="buik" className={fieldCardClass}>
         <Label className="text-xs font-semibold">Buikomvang (cm)</Label>
         <Input
           type="number" inputMode="decimal" name="buikomvang"
           value={formData.buikomvang} onChange={handleChange}
-          className="h-12 text-center font-bold"
+          className={inputClass}
           placeholder={ph(sheetDay?.buikomvang, " cm") || "0"}
         />
       </div>
     ),
     isShown("heupomvang") && (
-      <div key="heup" className="space-y-1.5">
+      <div key="heup" className={fieldCardClass}>
         <Label className="text-xs font-semibold">Heupomvang (cm)</Label>
         <Input
           type="number" inputMode="decimal" name="heupomvang"
           value={formData.heupomvang} onChange={handleChange}
-          className="h-12 text-center font-bold"
+          className={inputClass}
           placeholder={ph(sheetDay?.heupomvang, " cm") || "0"}
         />
       </div>
     )
   ].filter(Boolean);
 
-  const lmColClass = 
-    shownLichaamsmaten.length === 3 ? "grid-cols-3" :
-    shownLichaamsmaten.length === 2 ? "grid-cols-2" :
-    "grid-cols-1";
-
   const shownWellness1 = [
     isShown("energieniveau") && (
-      <div key="energie" className="space-y-1.5">
+      <div key="energie" className={fieldCardClass}>
         <Label className="text-xs font-semibold">Energieniveau (0-10)</Label>
         <Input
           type="number" inputMode="numeric" name="energieNiveau" min="0" max="10"
           value={formData.energieNiveau} onChange={handleChange}
-          className="h-12 text-center font-bold text-lg"
+          className={inputLargeClass}
           placeholder={ph(sheetDay?.energieniveau) || "0-10"}
         />
       </div>
     ),
     isShown("krachtniveau") && (
-      <div key="kracht" className="space-y-1.5">
+      <div key="kracht" className={fieldCardClass}>
         <Label className="text-xs font-semibold">Krachtniveau (0-10)</Label>
         <Input
           type="number" inputMode="numeric" name="krachtniveau" min="0" max="10"
           value={formData.krachtniveau} onChange={handleChange}
-          className="h-12 text-center font-bold text-lg"
+          className={inputLargeClass}
           placeholder={ph(sheetDay?.krachtniveau) || "0-10"}
         />
       </div>
@@ -446,34 +447,34 @@ function DagForm({ day, weekNumber, entry, sheetDay, targetKcal, targetProteinG,
 
   const shownWellness2 = [
     isShown("slaap") && (
-      <div key="slaap" className="space-y-1.5">
+      <div key="slaap" className={fieldCardClass}>
         <Label className="text-xs font-semibold">Slaap (uren)</Label>
         <Input
           type="number" inputMode="decimal" name="slaapUren"
           value={formData.slaapUren} onChange={handleChange}
-          className="h-12 text-center font-bold"
+          className={inputClass}
           placeholder={ph(sheetDay?.slaap, "u") || "8"}
         />
       </div>
     ),
     isShown("stress") && (
-      <div key="stress" className="space-y-1.5">
+      <div key="stress" className={fieldCardClass}>
         <Label className="text-xs font-semibold">Stress (0-10)</Label>
         <Input
           type="number" inputMode="numeric" name="stressNiveau" min="0" max="10"
           value={formData.stressNiveau} onChange={handleChange}
-          className="h-12 text-center font-bold"
+          className={inputClass}
           placeholder={ph(sheetDay?.stress) || "0-10"}
         />
       </div>
     ),
     isShown("stappen") && (
-      <div key="stappen" className="space-y-1.5">
+      <div key="stappen" className={fieldCardClass}>
         <Label className="text-xs font-semibold">Stappen</Label>
         <Input
           type="number" inputMode="numeric" name="stappen"
           value={formData.stappen} onChange={handleChange}
-          className="h-12 text-center font-bold"
+          className={inputClass}
           placeholder={ph(sheetDay?.stappen) || "0"}
         />
       </div>
@@ -484,100 +485,100 @@ function DagForm({ day, weekNumber, entry, sheetDay, targetKcal, targetProteinG,
 
   const shownCircumference = [
     isShown("schouders") && (
-      <div key="schouders" className="space-y-1.5">
+      <div key="schouders" className={fieldCardClass}>
         <Label className="text-xs font-semibold">Schouders (cm)</Label>
         <Input
           type="number" inputMode="decimal" name="schouders"
           value={formData.schouders} onChange={handleChange}
-          className="h-12 text-center font-bold"
+          className={inputClass}
           placeholder={ph(sheetDay?.schouders, " cm") || "0"}
         />
       </div>
     ),
     isShown("borstLats") && (
-      <div key="borstLats" className="space-y-1.5">
+      <div key="borstLats" className={fieldCardClass}>
         <Label className="text-xs font-semibold">Borst/Lats (cm)</Label>
         <Input
           type="number" inputMode="decimal" name="borstLats"
           value={formData.borstLats} onChange={handleChange}
-          className="h-12 text-center font-bold"
+          className={inputClass}
           placeholder={ph(sheetDay?.borstLats, " cm") || "0"}
         />
       </div>
     ),
     isShown("armLinks") && (
-      <div key="armLinks" className="space-y-1.5">
+      <div key="armLinks" className={fieldCardClass}>
         <Label className="text-xs font-semibold">Arm links (cm)</Label>
         <Input
           type="number" inputMode="decimal" name="armLinks"
           value={formData.armLinks} onChange={handleChange}
-          className="h-12 text-center font-bold"
+          className={inputClass}
           placeholder={ph(sheetDay?.armLinks, " cm") || "0"}
         />
       </div>
     ),
     isShown("armRechts") && (
-      <div key="armRechts" className="space-y-1.5">
+      <div key="armRechts" className={fieldCardClass}>
         <Label className="text-xs font-semibold">Arm rechts (cm)</Label>
         <Input
           type="number" inputMode="decimal" name="armRechts"
           value={formData.armRechts} onChange={handleChange}
-          className="h-12 text-center font-bold"
+          className={inputClass}
           placeholder={ph(sheetDay?.armRechts, " cm") || "0"}
         />
       </div>
     ),
     isShown("beenLinks") && (
-      <div key="beenLinks" className="space-y-1.5">
+      <div key="beenLinks" className={fieldCardClass}>
         <Label className="text-xs font-semibold">Been links (cm)</Label>
         <Input
           type="number" inputMode="decimal" name="beenLinks"
           value={formData.beenLinks} onChange={handleChange}
-          className="h-12 text-center font-bold"
+          className={inputClass}
           placeholder={ph(sheetDay?.beenLinks, " cm") || "0"}
         />
       </div>
     ),
     isShown("beenRechts") && (
-      <div key="beenRechts" className="space-y-1.5">
+      <div key="beenRechts" className={fieldCardClass}>
         <Label className="text-xs font-semibold">Been rechts (cm)</Label>
         <Input
           type="number" inputMode="decimal" name="beenRechts"
           value={formData.beenRechts} onChange={handleChange}
-          className="h-12 text-center font-bold"
+          className={inputClass}
           placeholder={ph(sheetDay?.beenRechts, " cm") || "0"}
         />
       </div>
     ),
     isShown("kuitLinks") && (
-      <div key="kuitLinks" className="space-y-1.5">
+      <div key="kuitLinks" className={fieldCardClass}>
         <Label className="text-xs font-semibold">Kuit links (cm)</Label>
         <Input
           type="number" inputMode="decimal" name="kuitLinks"
           value={formData.kuitLinks} onChange={handleChange}
-          className="h-12 text-center font-bold"
+          className={inputClass}
           placeholder={ph(sheetDay?.kuitLinks, " cm") || "0"}
         />
       </div>
     ),
     isShown("kuitRechts") && (
-      <div key="kuitRechts" className="space-y-1.5">
+      <div key="kuitRechts" className={fieldCardClass}>
         <Label className="text-xs font-semibold">Kuit rechts (cm)</Label>
         <Input
           type="number" inputMode="decimal" name="kuitRechts"
           value={formData.kuitRechts} onChange={handleChange}
-          className="h-12 text-center font-bold"
+          className={inputClass}
           placeholder={ph(sheetDay?.kuitRechts, " cm") || "0"}
         />
       </div>
     ),
     isShown("heupBil") && (
-      <div key="heupBil" className="space-y-1.5">
+      <div key="heupBil" className={fieldCardClass}>
         <Label className="text-xs font-semibold">Heup/Bil (cm)</Label>
         <Input
           type="number" inputMode="decimal" name="heupBil"
           value={formData.heupBil} onChange={handleChange}
-          className="h-12 text-center font-bold"
+          className={inputClass}
           placeholder={ph(sheetDay?.heupBil, " cm") || "0"}
         />
       </div>
@@ -586,13 +587,8 @@ function DagForm({ day, weekNumber, entry, sheetDay, targetKcal, targetProteinG,
 
   const showCircumferenceSection = shownCircumference.length > 0;
 
-  const circColClass = 
-    shownCircumference.length >= 3 ? "grid-cols-3" :
-    shownCircumference.length === 2 ? "grid-cols-2" :
-    "grid-cols-1";
-
   return (
-    <div className="bg-card border border-border rounded-xl p-5 shadow-sm space-y-5">
+    <div className="bg-card border border-border rounded-xl p-4 sm:p-5 shadow-sm space-y-5">
 
       {/* Status banner */}
       {hasDbEntry ? (
@@ -616,7 +612,7 @@ function DagForm({ day, weekNumber, entry, sheetDay, targetKcal, targetProteinG,
       {shownLichaamsmaten.length > 0 && (
         <div>
           <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Lichaamsmaten</p>
-          <div className={`grid ${lmColClass} gap-3`}>
+          <div className={responsiveGridClass}>
             {shownLichaamsmaten}
           </div>
         </div>
@@ -646,16 +642,10 @@ function DagForm({ day, weekNumber, entry, sheetDay, targetKcal, targetProteinG,
       {showWellnessSection && (
         <div>
           <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Welzijn &amp; Prestatie</p>
-          {shownWellness1.length > 0 && (
-            <div className={`grid ${shownWellness1.length === 2 ? 'grid-cols-2' : 'grid-cols-1'} gap-3 mb-3`}>
-              {shownWellness1}
-            </div>
-          )}
-          {shownWellness2.length > 0 && (
-            <div className={`grid ${shownWellness2.length === 3 ? 'grid-cols-3' : shownWellness2.length === 2 ? 'grid-cols-2' : 'grid-cols-1'} gap-3`}>
-              {shownWellness2}
-            </div>
-          )}
+          <div className={responsiveGridClass}>
+            {shownWellness1}
+            {shownWellness2}
+          </div>
         </div>
       )}
 
@@ -663,18 +653,18 @@ function DagForm({ day, weekNumber, entry, sheetDay, targetKcal, targetProteinG,
       {showCircumferenceSection && (
         <div>
           <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Omvangsmaten</p>
-          <div className={`grid ${circColClass} gap-3`}>
+          <div className={responsiveGridClass}>
             {shownCircumference}
           </div>
         </div>
       )}
 
       {/* Notities */}
-      <div className="space-y-1.5">
+      <div className={fieldCardClass}>
         <Label className="text-xs font-semibold">Notities</Label>
         <Textarea
           name="notes" value={formData.notes} onChange={handleChange}
-          className="resize-none" placeholder="Bijv. voelde me moe, spierpijn..."
+          className="min-h-24 resize-none" placeholder="Bijv. voelde me moe, spierpijn..."
         />
       </div>
 
