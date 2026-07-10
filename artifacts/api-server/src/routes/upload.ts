@@ -4,6 +4,12 @@ import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
 import { parseExcelFile, EXCEL_PATH, getExcelPath } from "../services/excelParser.js";
+import {
+  importExcelToDb,
+  saveImportSnapshot,
+  rollbackImport,
+  hasImportSnapshot,
+} from "../services/importService.js";
 import XLSX from "xlsx";
 import { getScopedClientId, requireTrainer } from "../lib/auth.js";
 
@@ -35,12 +41,19 @@ const upload = multer({
 
 const router = Router();
 
-router.post("/excel", requireTrainer, upload.single("file"), (req, res) => {
+/**
+ * POST /api/upload/excel
+ * Upload Excel sheet, parse it, and sync the training plan to the database.
+ * Saves a rollback snapshot first so the trainer can undo.
+ */
+router.post("/excel", requireTrainer, upload.single("file"), async (req, res) => {
   if (!req.file) {
     return void res.status(400).json({ error: "Geen Excel-bestand ontvangen. Stuur een .xlsx bestand mee." });
   }
 
-  const excelPath = getExcelPath(getScopedClientId(req));
+  const clientId = getScopedClientId(req);
+  const excelPath = getExcelPath(clientId);
+
   const result = parseExcelFile(excelPath);
   if (!result) {
     return void res.status(422).json({
@@ -48,13 +61,62 @@ router.post("/excel", requireTrainer, upload.single("file"), (req, res) => {
     });
   }
 
+  // Save snapshot BEFORE we change anything in the DB (for undo)
+  try {
+    await saveImportSnapshot(clientId);
+  } catch (err) {
+    req.log.warn({ err }, "Failed to save import snapshot");
+  }
+
+  // Sync parsed Excel data into the database
+  let importStats = { weeksImported: 0, workoutsCreated: 0, exercisesCreated: 0 };
+  try {
+    importStats = await importExcelToDb(clientId, result);
+  } catch (err) {
+    req.log.error({ err }, "Failed to import Excel to DB after upload");
+    return void res.status(500).json({
+      error: "Bestand ontvangen, maar importeren naar database mislukt. Probeer opnieuw.",
+    });
+  }
+
   return void res.json({
     bericht: "Excel-bestand succesvol geüpload en verwerkt.",
     tabbladen: result.sheetNames,
     wekenGeladen: result.weeks.length,
+    wekenGeimporteerd: importStats.weeksImported,
+    trainingenAangemaakt: importStats.workoutsCreated,
+    oefeninenAangemaakt: importStats.exercisesCreated,
     feedbackVragen: result.feedbackQuestions.length,
     parsedAt: result.parsedAt,
+    kanOngedaanMaken: true,
   });
+});
+
+/**
+ * POST /api/upload/excel/undo
+ * Roll back the last Excel import to the previous database state.
+ */
+router.post("/excel/undo", requireTrainer, async (req, res) => {
+  const clientId = getScopedClientId(req);
+  if (!hasImportSnapshot(clientId)) {
+    return void res.status(404).json({ error: "Geen recente import om ongedaan te maken." });
+  }
+  try {
+    const result = await rollbackImport(clientId);
+    return void res.json(result);
+  } catch (err) {
+    req.log.error({ err }, "Failed to rollback import");
+    return void res.status(500).json({ error: "Ongedaan maken mislukt" });
+  }
+});
+
+/**
+ * GET /api/upload/excel/undo-available
+ * Check if an undo snapshot is available for the current client.
+ */
+router.get("/excel/undo-available", requireTrainer, (req, res) => {
+  const clientId = getScopedClientId(req);
+  return void res.json({ available: hasImportSnapshot(clientId) });
 });
 
 router.delete("/excel", requireTrainer, (req, res) => {

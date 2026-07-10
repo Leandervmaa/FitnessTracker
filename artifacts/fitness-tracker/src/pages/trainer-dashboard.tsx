@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/components/auth-context";
 import { useClient } from "@/components/client-context";
+import { useQueryClient } from "@tanstack/react-query";
 
 type ClientRecord = {
   id: string;
@@ -33,6 +34,8 @@ const emptyForm = {
 export default function TrainerDashboard() {
   const { user, logout } = useAuth();
   const { activeClientId, setActiveClientId } = useClient();
+  const queryClient = useQueryClient();
+
   const [, setLocation] = useLocation();
   const [clients, setClients] = useState<ClientRecord[]>([]);
   const [query, setQuery] = useState("");
@@ -145,6 +148,10 @@ export default function TrainerDashboard() {
         if (!uploadRes.ok) {
           throw new Error(uploadData.error || "Klant opgeslagen, maar bestand uploaden is mislukt");
         }
+        // Invalidate weekplanner cache so it shows the newly imported data
+        queryClient.invalidateQueries({ queryKey: ["planned-week"] });
+        queryClient.invalidateQueries({ queryKey: ["planned-weeks"] });
+        queryClient.invalidateQueries({ queryKey: ["nutrition-targets"] });
       }
 
       setDialogOpen(false);

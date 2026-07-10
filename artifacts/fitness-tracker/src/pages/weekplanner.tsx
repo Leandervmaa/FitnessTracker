@@ -14,8 +14,11 @@ import {
   Plus,
   Save,
   Trash2,
+  Upload,
+  Undo2,
   X,
 } from "lucide-react";
+import { useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -173,6 +176,10 @@ export default function WeekplannerPage() {
 
   const [error, setError] = useState("");
   const [downloading, setDownloading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [undoAvailable, setUndoAvailable] = useState(false);
+  const [undoToast, setUndoToast] = useState<{ message: string; timeoutId: ReturnType<typeof setTimeout> } | null>(null);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
 
   // Previous week comparison
   const [compareWeekOffset, setCompareWeekOffset] = useState<number | null>(null);
@@ -497,6 +504,54 @@ export default function WeekplannerPage() {
     }
   };
 
+  const showUndoToast = (message: string) => {
+    if (undoToast) clearTimeout(undoToast.timeoutId);
+    const timeoutId = setTimeout(() => setUndoToast(null), 12000);
+    setUndoToast({ message, timeoutId });
+    setUndoAvailable(true);
+  };
+
+  const uploadExcel = async (file: File) => {
+    if (!file) return;
+    setUploading(true);
+    setError("");
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await apiFetch("/api/upload/excel", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Upload mislukt");
+      // Refresh all week data
+      queryClient.invalidateQueries({ queryKey: ["planned-week"] });
+      queryClient.invalidateQueries({ queryKey: ["planned-weeks"] });
+      queryClient.invalidateQueries({ queryKey: ["nutrition-targets"] });
+      showUndoToast(`Excel geïmporteerd: ${data.wekenGeladen ?? "?"} weken, ${data.trainingenAangemaakt ?? "?"} trainingen aangemaakt.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload mislukt");
+    } finally {
+      setUploading(false);
+      if (uploadInputRef.current) uploadInputRef.current.value = "";
+    }
+  };
+
+  const undoLastAction = async () => {
+    try {
+      const res = await apiFetch("/api/upload/excel/undo", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Ongedaan maken mislukt");
+      queryClient.invalidateQueries({ queryKey: ["planned-week"] });
+      queryClient.invalidateQueries({ queryKey: ["planned-weeks"] });
+      queryClient.invalidateQueries({ queryKey: ["nutrition-targets"] });
+      setUndoToast(null);
+      setUndoAvailable(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Ongedaan maken mislukt");
+    }
+  };
+
   const openAddExercise = (workout: PlannedWorkout) => {
     setActiveWorkout(workout);
     setEditingExercise(null);
@@ -666,6 +721,30 @@ export default function WeekplannerPage() {
               <Plus className="h-4 w-4 mr-1.5" />
               Week toevoegen
             </Button>
+
+            {/* Hidden file input for Excel upload */}
+            <input
+              ref={uploadInputRef}
+              type="file"
+              accept=".xlsx,.xls"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) uploadExcel(file);
+              }}
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => uploadInputRef.current?.click()}
+              disabled={uploading}
+              className="h-9 font-bold"
+              title="Excel importeren"
+            >
+              <Upload className="h-4 w-4 mr-1.5" />
+              {uploading ? "Laden..." : "Import"}
+            </Button>
+
             <Button
               variant="outline"
               size="sm"
@@ -678,6 +757,32 @@ export default function WeekplannerPage() {
             </Button>
           </div>
         </div>
+
+        {/* ─── Undo toast ─── */}
+        {undoToast && (
+          <div className="border-t border-amber-500/30 bg-amber-500/10 px-4 py-2">
+            <div className="max-w-7xl mx-auto flex items-center gap-3">
+              <p className="text-xs text-amber-800 dark:text-amber-300 flex-1">{undoToast.message}</p>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs font-bold border-amber-500/50 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20"
+                onClick={undoLastAction}
+              >
+                <Undo2 className="h-3 w-3 mr-1" />
+                Ongedaan maken
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-6 w-6 text-amber-600"
+                onClick={() => { clearTimeout(undoToast.timeoutId); setUndoToast(null); }}
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+          </div>
+        )}
 
         {/* ── Full-width toolbar ── */}
         <div className="border-t border-border bg-muted/30">
