@@ -5,6 +5,7 @@ import {
   ArrowDown,
   ArrowUp,
   ChevronLeft,
+  ChevronRight,
   Copy,
   Download,
   Dumbbell,
@@ -173,6 +174,9 @@ export default function WeekplannerPage() {
   const [error, setError] = useState("");
   const [downloading, setDownloading] = useState(false);
 
+  // Previous week comparison
+  const [compareWeekOffset, setCompareWeekOffset] = useState<number | null>(null);
+
   // ─── Queries ───────────────────────────────────────────────────────────────
 
   const { data: plannedWeeks } = useQuery<PlannedWeeks>({
@@ -253,6 +257,20 @@ export default function WeekplannerPage() {
       .filter((exercise) => !q || [exercise.name, exercise.category].some((v) => String(v || "").toLowerCase().includes(q)))
       .slice(0, 80);
   }, [library, librarySearch]);
+
+  // ─── Compare week query ────────────────────────────────────────────────────
+
+  const compareWeekNumber = compareWeekOffset !== null ? plannerWeekNumber + compareWeekOffset : null;
+
+  const { data: compareWeek } = useQuery<PlannedWeek>({
+    queryKey: ["planned-week", compareWeekNumber, activeClientId],
+    enabled: !!activeClientId && compareWeekNumber !== null && compareWeekNumber >= 1,
+    queryFn: async () => {
+      const res = await apiFetch(`/api/plans/week/${compareWeekNumber}`);
+      if (!res.ok) throw new Error("Vergelijkingsweek ophalen mislukt");
+      return res.json();
+    },
+  });
 
   // ─── Mutations ─────────────────────────────────────────────────────────────
 
@@ -425,6 +443,21 @@ export default function WeekplannerPage() {
     onSuccess: () => {
       invalidateWeek();
     },
+  });
+
+  const bulkAdjust = useMutation({
+    mutationFn: async (action: string) => {
+      const res = await apiFetch(`/api/plans/week/${plannerWeekNumber}/bulk-adjust`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Aanpassing mislukt");
+      return data;
+    },
+    onSuccess: invalidateWeek,
+    onError: (err) => setError(err instanceof Error ? err.message : "Aanpassing mislukt"),
   });
 
   const saveTargets = useMutation({
@@ -675,6 +708,99 @@ export default function WeekplannerPage() {
             </p>
           </div>
         </div>
+
+        {/* ── Bulk actions toolbar ── */}
+        <div className="border-t border-border bg-amber-50/40 dark:bg-amber-950/20">
+          <div className="max-w-7xl mx-auto px-4 py-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wide whitespace-nowrap">
+              Week aanpassen:
+            </span>
+
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-muted-foreground mr-1">Gewicht</span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-xs font-bold"
+                disabled={bulkAdjust.isPending}
+                onClick={() => bulkAdjust.mutate("weight+10")}
+              >
+                +10%
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-xs font-bold"
+                disabled={bulkAdjust.isPending}
+                onClick={() => bulkAdjust.mutate("weight-10")}
+              >
+                −10%
+              </Button>
+            </div>
+
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-muted-foreground mr-1">Herhalingen</span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-xs font-bold"
+                disabled={bulkAdjust.isPending}
+                onClick={() => bulkAdjust.mutate("reps+1")}
+              >
+                Rep ↑
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-xs font-bold"
+                disabled={bulkAdjust.isPending}
+                onClick={() => bulkAdjust.mutate("reps-1")}
+              >
+                Rep ↓
+              </Button>
+            </div>
+
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-muted-foreground mr-1">Sets</span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-xs font-bold"
+                disabled={bulkAdjust.isPending}
+                onClick={() => bulkAdjust.mutate("sets+1")}
+              >
+                +1 set
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-xs font-bold"
+                disabled={bulkAdjust.isPending}
+                onClick={() => bulkAdjust.mutate("sets-1")}
+              >
+                −1 set
+              </Button>
+            </div>
+
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-2 text-xs font-bold border-orange-400 text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-950"
+              disabled={bulkAdjust.isPending}
+              onClick={() => {
+                if (confirm(`Deload week ${plannerWeekNumber}? Dit verlaagt alle sets en rep-ranges.`)) {
+                  bulkAdjust.mutate("deload");
+                }
+              }}
+            >
+              Deload week
+            </Button>
+
+            {bulkAdjust.isPending && (
+              <span className="text-xs text-muted-foreground animate-pulse">Aanpassen...</span>
+            )}
+          </div>
+        </div>
       </header>
 
       <main className="max-w-7xl mx-auto p-4 md:p-6">
@@ -712,6 +838,89 @@ export default function WeekplannerPage() {
 
           {/* ── Right sidebar ── */}
           <aside className="space-y-4">
+            {/* Compare previous week panel */}
+            <div className="border border-border bg-card rounded-lg p-4">
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <div>
+                  <h2 className="font-black text-base">Vergelijk week</h2>
+                  <p className="text-xs text-muted-foreground">Bekijk een vorige of volgende week.</p>
+                </div>
+                <Button
+                  size="sm"
+                  variant={compareWeekOffset !== null ? "default" : "outline"}
+                  className="text-xs font-bold h-8"
+                  onClick={() => setCompareWeekOffset(compareWeekOffset !== null ? null : -1)}
+                >
+                  {compareWeekOffset !== null ? "Sluiten" : "Vergelijk vorige week"}
+                </Button>
+              </div>
+
+              {compareWeekOffset !== null && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      disabled={(compareWeekNumber ?? 0) <= 1}
+                      onClick={() => setCompareWeekOffset((o) => (o ?? 0) - 1)}
+                      title="Vorige week"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <span className="text-sm font-bold">
+                      Week {compareWeekNumber}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      disabled={(compareWeekNumber ?? 0) >= plannerWeekNumber - 1}
+                      onClick={() => setCompareWeekOffset((o) => (o ?? 0) + 1)}
+                      title="Volgende week"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+
+                  {compareWeek?.workouts?.length ? (
+                    <ul className="space-y-2">
+                      {compareWeek.workouts.map((wo) => (
+                        <li key={wo.id} className="border border-border rounded-md overflow-hidden">
+                          <div className="bg-muted/30 px-3 py-1.5 flex items-center gap-2">
+                            <Dumbbell className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                            <span className="font-bold text-sm truncate">{wo.name}</span>
+                            <span className="ml-auto text-xs text-muted-foreground shrink-0">
+                              {wo.exercises.length} oef.
+                            </span>
+                          </div>
+                          {wo.exercises.length > 0 && (
+                            <ul className="divide-y divide-border">
+                              {[...wo.exercises]
+                                .sort((a, b) => a.sortOrder - b.sortOrder)
+                                .map((ex) => (
+                                  <li key={ex.id} className="px-3 py-1.5 flex items-center justify-between gap-2">
+                                    <span className="text-xs font-semibold truncate">{ex.name}</span>
+                                    <span className="text-xs text-muted-foreground shrink-0 tabular-nums">
+                                      {ex.sets}×{ex.repRange || "—"}
+                                      {ex.targetRpe ? ` @${ex.targetRpe}` : ""}
+                                    </span>
+                                  </li>
+                                ))}
+                            </ul>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-xs text-muted-foreground text-center py-3">
+                      Geen trainingen voor week {compareWeekNumber}.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
             {/* Voedingsdoel */}
             <div className="border border-border bg-card rounded-lg p-4">
               <div className="flex items-center justify-between gap-3 mb-4">

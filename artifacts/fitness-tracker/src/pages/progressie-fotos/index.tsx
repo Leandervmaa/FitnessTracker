@@ -303,7 +303,7 @@ function PhotoSlot({ weekNumber, angle, label, photo }: {
     if (!file) return;
     try {
       await uploadMutation.mutateAsync({ weekNumber, angle, file });
-      toast({ title: "Foto toegevoegd ✓" });
+      toast({ title: "Foto toegevoegd ✓", duration: 1800 });
     } catch (err: any) {
       toast({ title: "Upload mislukt", description: err.message, variant: "destructive" });
     } finally {

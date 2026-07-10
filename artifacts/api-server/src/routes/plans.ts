@@ -614,7 +614,208 @@ router.put("/nutrition-targets", requireTrainer, async (req, res) => {
   }
 });
 
+
+/** POST /api/plans/exercises/:exerciseId/replace — Replace a planned exercise with another (client during workout) */
+router.post("/exercises/:exerciseId/replace", async (req, res) => {
+  try {
+    const clientId = getScopedClientId(req);
+    const exerciseId = param(req.params.exerciseId);
+    const [existing] = await db
+      .select()
+      .from(plannedWorkoutExercisesTable)
+      .where(and(eq(plannedWorkoutExercisesTable.id, exerciseId), eq(plannedWorkoutExercisesTable.clientId, clientId)));
+    if (!existing) return void res.status(404).json({ error: "Oefening niet gevonden" });
+
+    const replacementLibraryId = clean(req.body?.replacementLibraryId);
+    if (!replacementLibraryId) return void res.status(400).json({ error: "Kies een vervangende oefening" });
+
+    const [libraryItem] = await db.select().from(exerciseLibraryTable).where(eq(exerciseLibraryTable.id, replacementLibraryId));
+    if (!libraryItem) return void res.status(404).json({ error: "Oefening niet gevonden in bibliotheek" });
+
+    const [updated] = await db
+      .update(plannedWorkoutExercisesTable)
+      .set({
+        exerciseLibraryId: libraryItem.id,
+        name: libraryItem.name,
+        videoUrl: libraryItem.videoUrl,
+        imageUrl: libraryItem.imageUrl,
+        notes: libraryItem.notes,
+      })
+      .where(eq(plannedWorkoutExercisesTable.id, exerciseId))
+      .returning();
+
+    return void res.json(updated);
+  } catch (err) {
+    req.log.error({ err }, "Failed to replace exercise");
+    return void res.status(500).json({ error: "Oefening vervangen mislukt" });
+  }
+});
+
+/** GET /api/plans/compare/:weekA/:weekB — Side-by-side comparison data for two weeks */
+router.get("/compare/:weekA/:weekB", async (req, res) => {
+  try {
+    const clientId = getScopedClientId(req);
+    const weekA = intValue(req.params.weekA, 1);
+    const weekB = intValue(req.params.weekB, 2);
+
+    const [planA, planB] = await Promise.all([
+      getWeekPlan(clientId, weekA),
+      getWeekPlan(clientId, weekB),
+    ]);
+
+    // Nutrition entries for both weeks
+    const nutritionEntries = await db
+      .select()
+      .from(nutritionEntriesTable)
+      .where(and(eq(nutritionEntriesTable.clientId, clientId)))
+      .then((rows) => rows.filter((r) => r.weekNumber === weekA || r.weekNumber === weekB));
+
+    const nutritionA = nutritionEntries.filter((e) => e.weekNumber === weekA);
+    const nutritionB = nutritionEntries.filter((e) => e.weekNumber === weekB);
+
+    // Calculate totals for comparison
+    const calcWeekTotals = (plan: typeof planA) => ({
+      totalVolume: plan.flatMap((w) => w.exercises).reduce((sum, ex) => {
+        const setVolume = ex.currentSetLogs.reduce((s, log) => {
+          const w = parseFloat(String(log.weight || "0"));
+          const r = log.reps || 0;
+          return s + (w * r);
+        }, 0);
+        return sum + setVolume;
+      }, 0),
+      totalSets: plan.flatMap((w) => w.exercises).reduce((sum, ex) => sum + ex.currentSetLogs.length, 0),
+      totalReps: plan.flatMap((w) => w.exercises).reduce((sum, ex) => sum + ex.currentSetLogs.reduce((s, l) => s + (l.reps || 0), 0), 0),
+      workoutCount: plan.length,
+    });
+
+    const calcNutritionAvg = (entries: typeof nutritionA) => {
+      const days = entries.length || 1;
+      const sum = (key: keyof typeof nutritionA[0]) => entries.reduce((s, e) => s + parseFloat(String(e[key] || "0")), 0);
+      return {
+        avgKcal: sum("kcal") / days,
+        avgEiwit: sum("eiwittenG") / days,
+        avgGewicht: sum("lichaamsgewicht") / days,
+        avgSlaap: sum("slaapUren") / days,
+        avgStress: entries.reduce((s, e) => s + (e.stressNiveau || 0), 0) / days,
+        avgEnergie: entries.reduce((s, e) => s + (e.energieNiveau || 0), 0) / days,
+      };
+    };
+
+    return void res.json({
+      weekA: { weekNumber: weekA, plan: planA, totals: calcWeekTotals(planA), nutrition: calcNutritionAvg(nutritionA) },
+      weekB: { weekNumber: weekB, plan: planB, totals: calcWeekTotals(planB), nutrition: calcNutritionAvg(nutritionB) },
+    });
+  } catch (err) {
+    req.log.error({ err }, "Failed to get week comparison");
+    return void res.status(500).json({ error: "Vergelijking ophalen mislukt" });
+  }
+});
+
+/** POST /api/plans/week/:weekNumber/bulk-adjust — Apply bulk adjustments to all exercises in a week */
+router.post("/week/:weekNumber/bulk-adjust", requireTrainer, async (req, res) => {
+  try {
+    const clientId = getScopedClientId(req);
+    const weekNumber = intValue(req.params.weekNumber, 1);
+    const action = clean(req.body?.action);
+    if (!action) return void res.status(400).json({ error: "Actie is verplicht" });
+
+    const REP_RANGES = ["1-5", "5-8", "6-10", "8-12", "10-15", "12-20"];
+
+    const exercises = await db
+      .select()
+      .from(plannedWorkoutExercisesTable)
+      .where(and(eq(plannedWorkoutExercisesTable.clientId, clientId), eq(plannedWorkoutExercisesTable.weekNumber, weekNumber)));
+
+    let updatedCount = 0;
+    for (const ex of exercises) {
+      const updates: Partial<typeof plannedWorkoutExercisesTable.$inferInsert> = {};
+
+      if (action === "sets+1") updates.sets = (ex.sets || 3) + 1;
+      if (action === "sets-1") updates.sets = Math.max(1, (ex.sets || 3) - 1);
+
+      if (action === "reps+1" || action === "reps-1") {
+        const idx = REP_RANGES.indexOf(ex.repRange || "");
+        if (idx >= 0) {
+          const newIdx = action === "reps+1" ? Math.min(REP_RANGES.length - 1, idx + 1) : Math.max(0, idx - 1);
+          updates.repRange = REP_RANGES[newIdx];
+        }
+      }
+
+      if (action === "deload") {
+        updates.sets = Math.max(1, (ex.sets || 3) - 1);
+        const idx = REP_RANGES.indexOf(ex.repRange || "");
+        if (idx >= 0) updates.repRange = REP_RANGES[Math.max(0, idx - 2)];
+      }
+
+      if (Object.keys(updates).length > 0) {
+        await db.update(plannedWorkoutExercisesTable).set(updates).where(eq(plannedWorkoutExercisesTable.id, ex.id));
+        updatedCount++;
+      }
+    }
+
+    return void res.json({ updated: updatedCount, action, weekNumber });
+  } catch (err) {
+    req.log.error({ err }, "Failed to bulk adjust exercises");
+    return void res.status(500).json({ error: "Bulk aanpassing mislukt" });
+  }
+});
+
+/** POST /api/plans/templates/client — Save a client-specific copy of a template */
+router.post("/templates/client", requireTrainer, async (req, res) => {
+  try {
+    const clientId = getScopedClientId(req);
+    const sourceTemplateId = clean(req.body?.templateId);
+    const newName = clean(req.body?.name);
+    if (!sourceTemplateId || !newName) return void res.status(400).json({ error: "Template en naam zijn verplicht" });
+
+    const [source] = await db.select().from(trainingDayTemplatesTable).where(eq(trainingDayTemplatesTable.id, sourceTemplateId));
+    if (!source) return void res.status(404).json({ error: "Brontemplate niet gevonden" });
+
+    const sourceExercises = await db
+      .select()
+      .from(trainingDayTemplateExercisesTable)
+      .where(eq(trainingDayTemplateExercisesTable.templateId, sourceTemplateId))
+      .orderBy(asc(trainingDayTemplateExercisesTable.sortOrder));
+
+    const newTemplateId = randomId("tpl");
+    const [newTemplate] = await db
+      .insert(trainingDayTemplatesTable)
+      .values({ id: newTemplateId, name: newName, notes: `Klant-template (${clientId}) gebaseerd op: ${source.name}` })
+      .returning();
+
+    if (sourceExercises.length > 0) {
+      await db.insert(trainingDayTemplateExercisesTable).values(
+        sourceExercises.map((ex) => ({
+          id: randomId("tpe"),
+          templateId: newTemplateId,
+          exerciseLibraryId: ex.exerciseLibraryId,
+          name: ex.name,
+          videoUrl: ex.videoUrl,
+          imageUrl: ex.imageUrl,
+          notes: ex.notes,
+          sets: ex.sets,
+          repRange: ex.repRange,
+          targetRpe: ex.targetRpe,
+          sortOrder: ex.sortOrder,
+        }))
+      );
+    }
+
+    const exercises = await db
+      .select()
+      .from(trainingDayTemplateExercisesTable)
+      .where(eq(trainingDayTemplateExercisesTable.templateId, newTemplateId))
+      .orderBy(asc(trainingDayTemplateExercisesTable.sortOrder));
+
+    return void res.status(201).json({ ...newTemplate, exercises });
+  } catch (err) {
+    req.log.error({ err }, "Failed to create client template");
+    return void res.status(500).json({ error: "Klanttemplate aanmaken mislukt" });
+  }
+});
+
 router.get("/templates", requireTrainer, async (_req, res) => {
+
   const templates = await db.select().from(trainingDayTemplatesTable).orderBy(asc(trainingDayTemplatesTable.name));
   const exercises = await db.select().from(trainingDayTemplateExercisesTable).orderBy(asc(trainingDayTemplateExercisesTable.sortOrder));
   return void res.json(
@@ -799,4 +1000,62 @@ router.put("/templates/:templateId/exercises/:exerciseId", requireTrainer, async
   }
 });
 
+/** POST /api/plans/week/:weekNumber/bulk-adjust — Apply bulk adjustments to all exercises in a week */
+router.post("/week/:weekNumber/bulk-adjust", requireTrainer, async (req, res) => {
+  try {
+    const clientId = getScopedClientId(req);
+    const weekNumber = intValue(req.params.weekNumber, 1);
+    const action = clean(req.body?.action);
+    // actions: 'weight+10', 'weight-10', 'reps+1', 'reps-1', 'sets+1', 'sets-1', 'deload'
+    if (!action) return void res.status(400).json({ error: "Actie is verplicht" });
+
+    const REP_RANGES = ["1-5", "5-8", "6-10", "8-12", "10-15", "12-20"];
+
+    const exercises = await db
+      .select()
+      .from(plannedWorkoutExercisesTable)
+      .where(and(eq(plannedWorkoutExercisesTable.clientId, clientId), eq(plannedWorkoutExercisesTable.weekNumber, weekNumber)));
+
+    for (const ex of exercises) {
+      const updates: Partial<typeof plannedWorkoutExercisesTable.$inferInsert> = {};
+
+      if (action === "weight+10" || action === "weight-10") {
+        if (ex.targetRpe) {
+          // RPE-based: adjust RPE slightly (increase difficulty = lower RPE target)
+          const rpe = parseFloat(String(ex.targetRpe));
+          if (!isNaN(rpe)) {
+            updates.targetRpe = String(Math.min(10, Math.max(6, action === "weight+10" ? rpe + 0.5 : rpe - 0.5)));
+          }
+        }
+        // We don't store prescribed weight in exercises currently, so just note this in notes
+        updates.notes = ex.notes ? ex.notes : action === "weight+10" ? "+10% gewicht" : "-10% gewicht";
+      }
+
+      if (action === "reps+1" || action === "reps-1" || action === "deload") {
+        const currentRangeIdx = REP_RANGES.indexOf(ex.repRange || "");
+        if (currentRangeIdx >= 0) {
+          let newIdx = currentRangeIdx;
+          if (action === "reps+1") newIdx = Math.min(REP_RANGES.length - 1, currentRangeIdx + 1);
+          if (action === "reps-1" || action === "deload") newIdx = Math.max(0, currentRangeIdx - (action === "deload" ? 2 : 1));
+          updates.repRange = REP_RANGES[newIdx];
+        }
+      }
+
+      if (action === "sets+1") updates.sets = (ex.sets || 3) + 1;
+      if (action === "sets-1" || action === "deload") updates.sets = Math.max(1, (ex.sets || 3) - 1);
+
+      if (Object.keys(updates).length > 0) {
+        await db.update(plannedWorkoutExercisesTable).set(updates).where(eq(plannedWorkoutExercisesTable.id, ex.id));
+      }
+    }
+
+    syncWorkbook(req, clientId, weekNumber);
+    return void res.json({ updated: exercises.length, action, weekNumber });
+  } catch (err) {
+    req.log.error({ err }, "Failed to bulk adjust exercises");
+    return void res.status(500).json({ error: "Bulk aanpassing mislukt" });
+  }
+});
+
 export default router;
+

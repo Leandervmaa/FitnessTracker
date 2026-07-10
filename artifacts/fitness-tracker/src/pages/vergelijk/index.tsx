@@ -1,386 +1,436 @@
 import { useState, useMemo } from "react";
-import { Link } from "wouter";
-import { ChevronLeft, ArrowRightLeft, TrendingUp, TrendingDown, Minus } from "lucide-react";
-import { useWeek } from "@/components/week-context";
+import { useLocation } from "wouter";
+import { ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Minus, ArrowRight, Dumbbell, Utensils } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useQuery } from "@tanstack/react-query";
-import { 
-  useGetExerciseLogs, 
-  useGetWorkoutsForWeek, 
-  useListWeeks,
-  getGetExerciseLogsQueryKey,
-  getGetWorkoutsForWeekQueryKey
-} from "@workspace/api-client-react";
 import { apiFetch } from "@/lib/api";
+import { useClient } from "@/components/client-context";
 
-interface ProgressieDay {
-  gewicht: number | null;
-  kcal: number | null;
-  slaap: number | null;
-  stress: number | null;
-  energieniveau: number | null;
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type SetLog = {
+  setNumber: number;
+  reps: number | null;
+  weight: string | null;
+};
+
+type Exercise = {
+  id: string;
+  name: string;
+  sets: number;
+  repRange: string | null;
+  targetRpe: string | null;
+  currentSetLogs: SetLog[];
+  previousSetLogs: SetLog[];
+};
+
+type Workout = {
+  id: string;
+  name: string;
+  dayLabel: string;
+  exercises: Exercise[];
+  exerciseCount: number;
+  completedCount: number;
+};
+
+type WeekTotals = {
+  totalVolume: number;
+  totalSets: number;
+  totalReps: number;
+  workoutCount: number;
+};
+
+type NutritionAvg = {
+  avgKcal: number;
+  avgEiwit: number;
+  avgGewicht: number;
+  avgSlaap: number;
+  avgStress: number;
+  avgEnergie: number;
+};
+
+type WeekData = {
+  weekNumber: number;
+  plan: Workout[];
+  totals: WeekTotals;
+  nutrition: NutritionAvg;
+};
+
+type CompareData = {
+  weekA: WeekData;
+  weekB: WeekData;
+};
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function pct(a: number, b: number): number | null {
+  if (!a || !b) return null;
+  return Math.round(((b - a) / a) * 100);
 }
 
-interface ProgressieWeek {
-  days: ProgressieDay[];
+function fmt(n: number | null | undefined, decimals = 1): string {
+  if (n === null || n === undefined || isNaN(n)) return "—";
+  return n.toFixed(decimals);
 }
 
-function useProgressieWeek(weekNumber: number) {
-  return useQuery<ProgressieWeek | null>({
-    queryKey: ["progressie-week", weekNumber],
-    queryFn: async () => {
-      if (!weekNumber) return null;
-      try {
-        const res = await apiFetch(`/api/nutrition/progressie/${weekNumber}`);
-        if (!res.ok) return null;
-        return await res.json();
-      } catch {
-        return null;
-      }
-    },
-    enabled: !!weekNumber,
-    staleTime: 60_000,
-  });
-}
-
-function calculateAverage(days: ProgressieDay[] | undefined, key: keyof ProgressieDay): number | null {
-  if (!days) return null;
-  const validDays = days.filter(d => d[key] !== null);
-  if (validDays.length === 0) return null;
-  const sum = validDays.reduce((acc, d) => acc + (d[key] as number), 0);
-  return sum / validDays.length;
-}
-
-// Helper for rendering differences
-function DiffText({ a, b, unit = "", decimals = 1, reverseColors = false }: { a: number | null, b: number | null, unit?: string, decimals?: number, reverseColors?: boolean }) {
-  if (a === null || b === null) return <span className="text-muted-foreground">—</span>;
-  const diff = b - a;
-  if (Math.abs(diff) < 0.01) return <span className="text-muted-foreground font-medium flex items-center gap-1"><Minus className="w-3 h-3"/> 0{unit}</span>;
-  
+function DeltaBadge({ a, b, higherIsBetter = true }: { a: number; b: number; higherIsBetter?: boolean }) {
+  const diff = pct(a, b);
+  if (diff === null) return <span className="text-muted-foreground text-xs">—</span>;
   const isPositive = diff > 0;
-  const isGood = reverseColors ? !isPositive : isPositive;
-  const Icon = isPositive ? TrendingUp : TrendingDown;
-  const colorClass = isGood ? "text-green-600 dark:text-green-400" : "text-destructive";
-  
+  const isGood = higherIsBetter ? isPositive : !isPositive;
+  const color = diff === 0 ? "text-muted-foreground" : isGood ? "text-green-500" : "text-red-500";
+  const Icon = diff === 0 ? Minus : isPositive ? TrendingUp : TrendingDown;
   return (
-    <span className={`font-bold flex items-center gap-1 ${colorClass}`}>
-      <Icon className="w-3.5 h-3.5" />
-      {diff > 0 ? "+" : ""}{diff.toFixed(decimals)}{unit}
+    <span className={`inline-flex items-center gap-0.5 text-xs font-semibold ${color}`}>
+      <Icon className="h-3 w-3" />
+      {diff > 0 ? "+" : ""}{diff}%
     </span>
   );
 }
 
-export default function VergelijkPage() {
-  const { selectedWeek } = useWeek();
-  const { data: weeks } = useListWeeks();
-  const maxWeek = weeks ? Math.max(...weeks.map((w: any) => w.weekNumber)) : selectedWeek || 1;
-  
-  const [weekA, setWeekA] = useState<number>(Math.max(1, (selectedWeek || 2) - 1));
-  const [weekB, setWeekB] = useState<number>(selectedWeek || 1);
+// ─── Hooks ────────────────────────────────────────────────────────────────────
 
-  // Fetch Dagboek Data
-  const { data: progA } = useProgressieWeek(weekA);
-  const { data: progB } = useProgressieWeek(weekB);
+function useCompare(weekA: number, weekB: number) {
+  return useQuery<CompareData>({
+    queryKey: ["compare-weeks", weekA, weekB],
+    queryFn: async () => {
+      const res = await apiFetch(`/api/plans/compare/${weekA}/${weekB}`);
+      if (!res.ok) throw new Error("Vergelijking ophalen mislukt");
+      return res.json();
+    },
+    enabled: weekA >= 1 && weekB >= 1 && weekA !== weekB,
+    staleTime: 30_000,
+  });
+}
 
-  // Fetch Training Data
-  const { data: logsA = [] } = useGetExerciseLogs(
-    { weekNumber: weekA }, 
-    { query: { queryKey: getGetExerciseLogsQueryKey({ weekNumber: weekA }), enabled: !!weekA } }
-  );
-  const { data: logsB = [] } = useGetExerciseLogs(
-    { weekNumber: weekB }, 
-    { query: { queryKey: getGetExerciseLogsQueryKey({ weekNumber: weekB }), enabled: !!weekB } }
-  );
-  
-  const { data: workoutsA = [] } = useGetWorkoutsForWeek(
-    weekA, 
-    { query: { queryKey: getGetWorkoutsForWeekQueryKey(weekA), enabled: !!weekA } }
-  );
-  const { data: workoutsB = [] } = useGetWorkoutsForWeek(
-    weekB, 
-    { query: { queryKey: getGetWorkoutsForWeekQueryKey(weekB), enabled: !!weekB } }
-  );
+function usePlannedWeekNumbers() {
+  return useQuery<{ weekNumbers: number[] }>({
+    queryKey: ["planned-weeks"],
+    queryFn: async () => {
+      const res = await apiFetch("/api/plans/weeks");
+      if (!res.ok) return { weekNumbers: [] };
+      return res.json();
+    },
+  });
+}
 
-  // Aggregate logs by workout (full outer join on workouts from Week A and Week B)
-  const workoutsCompare = useMemo(() => {
-    const pairedWorkouts: Array<{ workoutA: any; workoutB: any }> = [];
-    const matchedBIds = new Set<string>();
+// ─── Sub-components ───────────────────────────────────────────────────────────
 
-    workoutsA.forEach((wA: any) => {
-      const wB = workoutsB.find((wb: any) => wb.name === wA.name || wb.dayLabel === wA.dayLabel);
-      if (wB) {
-        matchedBIds.add(wB.id);
-      }
-      pairedWorkouts.push({ workoutA: wA, workoutB: wB });
-    });
-
-    workoutsB.forEach((wB: any) => {
-      if (!matchedBIds.has(wB.id)) {
-        pairedWorkouts.push({ workoutA: null, workoutB: wB });
-      }
-    });
-
-    return pairedWorkouts.map(({ workoutA, workoutB }) => {
-      const exercisesA = workoutA?.exercises || [];
-      const exercisesB = workoutB?.exercises || [];
-
-      // Get the union of all exercise names in order.
-      const allExerciseNames: string[] = [];
-      exercisesA.forEach((ex: any) => {
-        if (!allExerciseNames.includes(ex.name)) {
-          allExerciseNames.push(ex.name);
-        }
-      });
-      exercisesB.forEach((ex: any) => {
-        if (!allExerciseNames.includes(ex.name)) {
-          allExerciseNames.push(ex.name);
-        }
-      });
-
-      const exercises = allExerciseNames.map((exerciseName) => {
-        const exA = exercisesA.find((e: any) => e.name === exerciseName);
-        const exB = exercisesB.find((e: any) => e.name === exerciseName);
-
-        const logA = exA
-          ? logsA.find((l: any) => 
-              l.exerciseId === exA.id || 
-              (workoutsA.some((wa: any) => wa.id === l.workoutId && wa.exercises?.some((e: any) => e.id === l.exerciseId && e.name === exerciseName)))
-            )
-          : null;
-
-        const logB = exB
-          ? logsB.find((l: any) => 
-              l.exerciseId === exB.id || 
-              (workoutsB.some((wb: any) => wb.id === l.workoutId && wb.exercises?.some((e: any) => e.id === l.exerciseId && e.name === exerciseName)))
-            )
-          : null;
-
-        const parseSetStr = (str: string | null | undefined) => str ? str.split(',').map(s => s.trim()).filter(s => s !== "") : [];
-
-        const weightsA = parseSetStr(logA?.weight);
-        const repsA = parseSetStr(logA?.reps);
-        const weightsB = parseSetStr(logB?.weight);
-        const repsB = parseSetStr(logB?.reps);
-
-        const maxSets = Math.max(weightsA.length, weightsB.length, 1);
-
-        const sets = Array.from({ length: maxSets }).map((_, i) => ({
-          setNum: i + 1,
-          weightA: weightsA[i] ? parseFloat(weightsA[i]) : null,
-          repsA: repsA[i] || null,
-          weightB: weightsB[i] ? parseFloat(weightsB[i]) : null,
-          repsB: repsB[i] || null,
-        }));
-
-        return {
-          name: exerciseName,
-          sets
-        };
-      });
-
-      return {
-        workoutName: workoutA?.name || workoutB?.name || "",
-        dayLabel: workoutA?.dayLabel || workoutB?.dayLabel || "",
-        exercises: exercises.filter((e: any) => 
-          e.sets.some((s: any) => s.weightA !== null || s.weightB !== null || s.repsA !== null || s.repsB !== null)
-        )
-      };
-    }).filter((w: any) => w.exercises.length > 0);
-  }, [workoutsA, workoutsB, logsA, logsB]);
-
-  // Derived Dagboek averages
-  const dagboekA = {
-    gewicht: calculateAverage(progA?.days, "gewicht"),
-    kcal: calculateAverage(progA?.days, "kcal"),
-    slaap: calculateAverage(progA?.days, "slaap"),
-    stress: calculateAverage(progA?.days, "stress"),
-    energie: calculateAverage(progA?.days, "energieniveau"),
-  };
-
-  const dagboekB = {
-    gewicht: calculateAverage(progB?.days, "gewicht"),
-    kcal: calculateAverage(progB?.days, "kcal"),
-    slaap: calculateAverage(progB?.days, "slaap"),
-    stress: calculateAverage(progB?.days, "stress"),
-    energie: calculateAverage(progB?.days, "energieniveau"),
-  };
-
-  const weekOptions = Array.from({ length: maxWeek }, (_, i) => i + 1);
-
+function StatRow({
+  label,
+  valueA,
+  valueB,
+  higherIsBetter = true,
+  decimals = 0,
+}: {
+  label: string;
+  valueA: number;
+  valueB: number;
+  higherIsBetter?: boolean;
+  decimals?: number;
+}) {
   return (
-    <div className="min-h-[100dvh] w-full bg-background flex flex-col">
-      <header className="w-full p-4 flex items-center border-b border-border sticky top-0 bg-background/80 backdrop-blur-md z-10">
-        <Link href="/">
-          <Button variant="ghost" size="icon" className="mr-2">
-            <ChevronLeft className="h-6 w-6" />
-          </Button>
-        </Link>
-        <div className="flex-1 flex items-center">
-          <ArrowRightLeft className="w-5 h-5 text-primary mr-2" />
-          <h1 className="text-xl font-bold text-foreground">Week Vergelijking</h1>
-        </div>
-      </header>
-
-      {/* Main container allowing horizontal scroll on mobile, full width on desktop */}
-      <div className="flex-1 w-full overflow-x-auto">
-        <div className="w-full max-w-7xl mx-auto p-4 md:p-6 flex flex-col gap-6">
-          
-          {/* Header row: Selectors */}
-          <div className="grid grid-cols-3 gap-4 sticky top-0 bg-background/95 pb-2 z-10 border-b border-border pt-2">
-            <div>
-              <Label className="text-xs text-muted-foreground mb-1 block">Week A (Oud)</Label>
-              <Select value={weekA.toString()} onValueChange={v => setWeekA(parseInt(v))}>
-                <SelectTrigger className="font-bold text-lg h-12">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {weekOptions.map(w => (
-                    <SelectItem key={w} value={w.toString()}>Week {w}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div>
-              <Label className="text-xs text-muted-foreground mb-1 block">Week B (Nieuw)</Label>
-              <Select value={weekB.toString()} onValueChange={v => setWeekB(parseInt(v))}>
-                <SelectTrigger className="font-bold text-lg h-12">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {weekOptions.map(w => (
-                    <SelectItem key={w} value={w.toString()}>Week {w}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="flex flex-col justify-end pb-3">
-              <span className="text-lg font-black text-primary border-b-2 border-primary w-fit">Verschil (B - A)</span>
-            </div>
-          </div>
-
-          {/* Section: Dagboek Averages */}
-          <section className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
-            <div className="bg-secondary/40 px-4 py-3 border-b border-border">
-              <h2 className="font-bold uppercase tracking-wider text-sm">Dagboek Gemiddelden</h2>
-            </div>
-            <div className="divide-y divide-border">
-              
-              <MetricRow 
-                label="Lichaamsgewicht" 
-                valA={dagboekA.gewicht} valB={dagboekB.gewicht} 
-                unit="kg" reverseColors 
-              />
-              <MetricRow 
-                label="Calorieën (Kcal)" 
-                valA={dagboekA.kcal} valB={dagboekB.kcal} 
-                unit="kcal" decimals={0} reverseColors 
-              />
-              <MetricRow 
-                label="Slaap (uren)" 
-                valA={dagboekA.slaap} valB={dagboekB.slaap} 
-                unit="u" 
-              />
-              <MetricRow 
-                label="Stressniveau (1-10)" 
-                valA={dagboekA.stress} valB={dagboekB.stress} 
-                reverseColors 
-              />
-              <MetricRow 
-                label="Energieniveau (1-10)" 
-                valA={dagboekA.energie} valB={dagboekB.energie} 
-              />
-              
-            </div>
-          </section>
-
-          {/* Section: Trainingen per Workout */}
-          {workoutsCompare.length === 0 ? (
-             <div className="bg-card border border-border rounded-xl p-6 text-center text-muted-foreground text-sm">Geen gelogde oefeningen gevonden voor deze weken.</div>
-          ) : (
-            workoutsCompare.map((workout: any, wIdx: number) => (
-              <section key={wIdx} className="bg-card border border-border rounded-xl shadow-sm overflow-hidden mb-6">
-                <div className="bg-primary/10 px-4 py-3 border-b border-primary/20 flex justify-between items-center">
-                  <h2 className="font-bold uppercase tracking-wider text-sm text-primary">{workout.dayLabel}: {workout.workoutName}</h2>
-                </div>
-                
-                <div className="divide-y divide-border">
-                  {workout.exercises.map((ex: any, eIdx: number) => (
-                    <div key={eIdx} className="px-4 py-4 hover:bg-secondary/10 transition-colors">
-                      <div className="text-sm font-bold mb-3 text-foreground">{ex.name}</div>
-                      
-                      <div className="grid grid-cols-[1.5rem_1fr_1fr_1fr] gap-2 items-center text-xs mb-1 px-1 text-muted-foreground font-semibold">
-                        <div className="text-center">#</div>
-                        <div className="truncate pr-1">Wk {weekA}</div>
-                        <div className="truncate pr-1">Wk {weekB}</div>
-                        <div className="text-right">Diff</div>
-                      </div>
-
-                      <div className="space-y-0.5">
-                        {ex.sets.map((set: any, sIdx: number) => (
-                          <div key={sIdx} className="grid grid-cols-[1.5rem_1fr_1fr_1fr] gap-2 items-center py-1.5 border-b border-border/40 last:border-0 text-sm">
-                            {/* Set # */}
-                            <div className="text-center font-bold text-muted-foreground">{sIdx + 1}</div>
-                            
-                            {/* Week A */}
-                            <div className="grid grid-cols-[3.25rem_0.75rem_1.75rem] items-center text-sm">
-                              <span className="font-semibold tabular-nums text-right">{set.weightA !== null ? set.weightA : "-"}</span>
-                              <span className="text-muted-foreground text-xs text-center">×</span>
-                              <span className="font-semibold tabular-nums text-left">{set.repsA || "-"}</span>
-                            </div>
-                            
-                            {/* Week B */}
-                            <div className="grid grid-cols-[3.25rem_0.75rem_1.75rem] items-center text-sm">
-                              <span className="font-semibold tabular-nums text-right">{set.weightB !== null ? set.weightB : "-"}</span>
-                              <span className="text-muted-foreground text-xs text-center">×</span>
-                              <span className="font-semibold tabular-nums text-left">{set.repsB || "-"}</span>
-                            </div>
-                            
-                            {/* Diff */}
-                            <div className="flex flex-col sm:flex-row justify-end items-end sm:items-center gap-1 sm:gap-2 text-xs">
-                              <DiffText a={set.weightA} b={set.weightB} unit="kg" decimals={1} />
-                              <DiffText 
-                                a={set.repsA ? parseInt(set.repsA) : null} 
-                                b={set.repsB ? parseInt(set.repsB) : null} 
-                                unit="r" 
-                                decimals={0} 
-                              />
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            ))
-          )}
-
-        </div>
+    <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 py-2 border-b border-border/50 last:border-0">
+      <span className="text-right font-semibold text-sm text-foreground tabular-nums">{fmt(valueA, decimals)}</span>
+      <div className="flex flex-col items-center gap-0.5 min-w-[80px]">
+        <span className="text-xs text-muted-foreground text-center leading-tight">{label}</span>
+        <DeltaBadge a={valueA} b={valueB} higherIsBetter={higherIsBetter} />
       </div>
+      <span className="text-left font-semibold text-sm text-foreground tabular-nums">{fmt(valueB, decimals)}</span>
     </div>
   );
 }
 
-function Label({ children, className }: { children: React.ReactNode, className?: string }) {
-  return <label className={className}>{children}</label>;
+function WorkoutCompare({ workoutA, workoutB }: { workoutA: Workout | undefined; workoutB: Workout | undefined }) {
+  const allExerciseNames = useMemo(() => {
+    const names = new Set<string>();
+    workoutA?.exercises.forEach((e) => names.add(e.name));
+    workoutB?.exercises.forEach((e) => names.add(e.name));
+    return Array.from(names);
+  }, [workoutA, workoutB]);
+
+  const getExVolume = (workout: Workout | undefined, name: string) => {
+    const ex = workout?.exercises.find((e) => e.name === name);
+    if (!ex) return null;
+    return ex.currentSetLogs.reduce((s, log) => s + (parseFloat(log.weight || "0") * (log.reps || 0)), 0);
+  };
+
+  const getExSummary = (workout: Workout | undefined, name: string) => {
+    const ex = workout?.exercises.find((e) => e.name === name);
+    if (!ex || ex.currentSetLogs.length === 0) return null;
+    return ex.currentSetLogs.map((l) => `${l.weight || "?"}×${l.reps || "?"}`).join("  ");
+  };
+
+  return (
+    <div className="space-y-1">
+      {allExerciseNames.map((name) => {
+        const volA = getExVolume(workoutA, name);
+        const volB = getExVolume(workoutB, name);
+        const summaryA = getExSummary(workoutA, name);
+        const summaryB = getExSummary(workoutB, name);
+        const inA = !!workoutA?.exercises.find((e) => e.name === name);
+        const inB = !!workoutB?.exercises.find((e) => e.name === name);
+
+        return (
+          <div key={name} className="rounded-lg bg-card border border-border p-3">
+            <p className="text-xs font-semibold text-foreground text-center mb-2">{name}</p>
+            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+              <div className="text-right">
+                {inA ? (
+                  <>
+                    <p className="text-xs text-muted-foreground">{summaryA || "geen logs"}</p>
+                    {volA !== null && volA > 0 && <p className="text-xs font-bold text-foreground">{Math.round(volA)} kg vol.</p>}
+                  </>
+                ) : (
+                  <p className="text-xs text-muted-foreground italic">—</p>
+                )}
+              </div>
+              <div className="flex items-center justify-center">
+                {volA !== null && volB !== null && volA > 0 && volB > 0 ? (
+                  <DeltaBadge a={volA} b={volB} />
+                ) : (
+                  <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                )}
+              </div>
+              <div className="text-left">
+                {inB ? (
+                  <>
+                    <p className="text-xs text-muted-foreground">{summaryB || "geen logs"}</p>
+                    {volB !== null && volB > 0 && <p className="text-xs font-bold text-foreground">{Math.round(volB)} kg vol.</p>}
+                  </>
+                ) : (
+                  <p className="text-xs text-muted-foreground italic">—</p>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
-function MetricRow({ label, valA, valB, unit = "", decimals = 1, reverseColors = false }: any) {
+// ─── Main Page ────────────────────────────────────────────────────────────────
+
+export default function VergelijkPage() {
+  const [, setLocation] = useLocation();
+  const { activeClientId } = useClient();
+
+  const { data: weeksData } = usePlannedWeekNumbers();
+  const allWeeks = weeksData?.weekNumbers ?? [];
+
+  const [weekA, setWeekA] = useState<number>(0);
+  const [weekB, setWeekB] = useState<number>(0);
+
+  // Auto-select last two weeks on first load
+  useMemo(() => {
+    if (allWeeks.length >= 2 && weekA === 0 && weekB === 0) {
+      setWeekA(allWeeks[allWeeks.length - 2]);
+      setWeekB(allWeeks[allWeeks.length - 1]);
+    }
+  }, [allWeeks]);
+
+  const { data: compareData, isLoading, error } = useCompare(weekA, weekB);
+
+  const stepWeekA = (dir: 1 | -1) => {
+    const idx = allWeeks.indexOf(weekA);
+    const next = allWeeks[idx + dir];
+    if (next !== undefined) setWeekA(next);
+  };
+
+  const stepWeekB = (dir: 1 | -1) => {
+    const idx = allWeeks.indexOf(weekB);
+    const next = allWeeks[idx + dir];
+    if (next !== undefined) setWeekB(next);
+  };
+
+  // Match workouts by name/dayLabel across both weeks
+  const workoutPairs = useMemo(() => {
+    if (!compareData) return [];
+    const planA = compareData.weekA.plan;
+    const planB = compareData.weekB.plan;
+    const allNames = Array.from(new Set([...planA.map((w) => w.name), ...planB.map((w) => w.name)]));
+    return allNames.map((name) => ({
+      name,
+      wA: planA.find((w) => w.name === name),
+      wB: planB.find((w) => w.name === name),
+    }));
+  }, [compareData]);
+
   return (
-    <div className="grid grid-cols-3 gap-4 px-4 py-3 hover:bg-secondary/20 transition-colors items-center">
-      <div>
-        <div className="text-xs font-semibold text-muted-foreground mb-1">{label}</div>
-        <div className="text-sm font-bold">{valA !== null ? `${valA.toFixed(decimals)}${unit}` : <span className="text-muted-foreground font-normal">—</span>}</div>
+    <div className="min-h-[100dvh] w-full bg-background flex flex-col items-center max-w-md mx-auto">
+      {/* Header */}
+      <header className="w-full p-4 flex items-center border-b border-border sticky top-0 bg-background/80 backdrop-blur-md z-10">
+        <Button variant="ghost" size="icon" onClick={() => setLocation("/")} className="mr-2">
+          <ChevronLeft className="h-6 w-6" />
+        </Button>
+        <h1 className="text-xl font-bold text-foreground flex-1">Vergelijken</h1>
+      </header>
+
+      {/* Week Selectors */}
+      <div className="w-full p-4 grid grid-cols-[1fr_auto_1fr] gap-2 items-center border-b border-border">
+        {/* Week A */}
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => stepWeekA(-1)} disabled={allWeeks.indexOf(weekA) <= 0}>
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <div className="flex-1 text-center">
+            <p className="text-xs text-muted-foreground">Oud</p>
+            <p className="text-lg font-bold text-foreground">Week {weekA || "—"}</p>
+          </div>
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => stepWeekA(1)} disabled={allWeeks.indexOf(weekA) >= allWeeks.length - 1}>
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+
+        <div className="text-muted-foreground text-xs text-center">vs</div>
+
+        {/* Week B */}
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => stepWeekB(-1)} disabled={allWeeks.indexOf(weekB) <= 0}>
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <div className="flex-1 text-center">
+            <p className="text-xs text-muted-foreground">Nieuw</p>
+            <p className="text-lg font-bold text-foreground">Week {weekB || "—"}</p>
+          </div>
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => stepWeekB(1)} disabled={allWeeks.indexOf(weekB) >= allWeeks.length - 1}>
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
-      <div>
-        <div className="text-xs font-semibold text-muted-foreground mb-1 invisible">{label}</div>
-        <div className="text-sm font-bold">{valB !== null ? `${valB.toFixed(decimals)}${unit}` : <span className="text-muted-foreground font-normal">—</span>}</div>
-      </div>
-      <div>
-        <DiffText a={valA} b={valB} unit={unit} decimals={decimals} reverseColors={reverseColors} />
+
+      {/* Column headers */}
+      {compareData && (
+        <div className="w-full px-4 py-2 grid grid-cols-[1fr_auto_1fr] text-xs font-bold text-muted-foreground border-b border-border/50">
+          <span className="text-right">Week {compareData.weekA.weekNumber}</span>
+          <span className="w-[80px]" />
+          <span className="text-left">Week {compareData.weekB.weekNumber}</span>
+        </div>
+      )}
+
+      <div className="w-full p-4 flex flex-col gap-5">
+        {isLoading && (
+          <div className="flex items-center justify-center py-16">
+            <div className="w-8 h-8 rounded-full border-4 border-primary border-t-transparent animate-spin" />
+          </div>
+        )}
+
+        {error && (
+          <div className="rounded-xl bg-destructive/10 border border-destructive/20 p-4 text-sm text-destructive text-center">
+            Kon vergelijking niet laden. Controleer of beide weken data hebben.
+          </div>
+        )}
+
+        {compareData && (
+          <>
+            {/* ─── Totaalvolume ─── */}
+            <section>
+              <div className="flex items-center gap-2 mb-3">
+                <Dumbbell className="h-4 w-4 text-primary" />
+                <h2 className="text-sm font-bold text-foreground uppercase tracking-wider">Training Totalen</h2>
+              </div>
+              <div className="rounded-xl bg-card border border-border p-4">
+                <StatRow
+                  label="Totaalvolume (kg)"
+                  valueA={compareData.weekA.totals.totalVolume}
+                  valueB={compareData.weekB.totals.totalVolume}
+                  decimals={0}
+                />
+                <StatRow
+                  label="Totaal sets"
+                  valueA={compareData.weekA.totals.totalSets}
+                  valueB={compareData.weekB.totals.totalSets}
+                  decimals={0}
+                />
+                <StatRow
+                  label="Totaal herhalingen"
+                  valueA={compareData.weekA.totals.totalReps}
+                  valueB={compareData.weekB.totals.totalReps}
+                  decimals={0}
+                />
+                <StatRow
+                  label="Trainingen"
+                  valueA={compareData.weekA.totals.workoutCount}
+                  valueB={compareData.weekB.totals.workoutCount}
+                  decimals={0}
+                />
+              </div>
+            </section>
+
+            {/* ─── Metingen ─── */}
+            <section>
+              <div className="flex items-center gap-2 mb-3">
+                <Utensils className="h-4 w-4 text-primary" />
+                <h2 className="text-sm font-bold text-foreground uppercase tracking-wider">Metingen (weekgemiddelde)</h2>
+              </div>
+              <div className="rounded-xl bg-card border border-border p-4">
+                <StatRow
+                  label="Gewicht (kg)"
+                  valueA={compareData.weekA.nutrition.avgGewicht}
+                  valueB={compareData.weekB.nutrition.avgGewicht}
+                  higherIsBetter={false}
+                  decimals={1}
+                />
+                <StatRow
+                  label="Calorieën (kcal)"
+                  valueA={compareData.weekA.nutrition.avgKcal}
+                  valueB={compareData.weekB.nutrition.avgKcal}
+                  decimals={0}
+                />
+                <StatRow
+                  label="Eiwit (g)"
+                  valueA={compareData.weekA.nutrition.avgEiwit}
+                  valueB={compareData.weekB.nutrition.avgEiwit}
+                  decimals={0}
+                />
+                <StatRow
+                  label="Slaap (uren)"
+                  valueA={compareData.weekA.nutrition.avgSlaap}
+                  valueB={compareData.weekB.nutrition.avgSlaap}
+                  decimals={1}
+                />
+                <StatRow
+                  label="Energieniveau"
+                  valueA={compareData.weekA.nutrition.avgEnergie}
+                  valueB={compareData.weekB.nutrition.avgEnergie}
+                  decimals={1}
+                />
+                <StatRow
+                  label="Stressniveau"
+                  valueA={compareData.weekA.nutrition.avgStress}
+                  valueB={compareData.weekB.nutrition.avgStress}
+                  higherIsBetter={false}
+                  decimals={1}
+                />
+              </div>
+            </section>
+
+            {/* ─── Per training ─── */}
+            {workoutPairs.map(({ name, wA, wB }) => (
+              <section key={name}>
+                <div className="flex items-center gap-2 mb-3">
+                  <Dumbbell className="h-4 w-4 text-muted-foreground" />
+                  <h2 className="text-sm font-bold text-foreground">{name}</h2>
+                  {!wA && <span className="text-xs bg-green-500/20 text-green-600 px-1.5 py-0.5 rounded font-semibold">Nieuw</span>}
+                </div>
+                <WorkoutCompare workoutA={wA} workoutB={wB} />
+              </section>
+            ))}
+
+            {workoutPairs.length === 0 && (
+              <div className="text-center py-8 text-muted-foreground text-sm">
+                Geen trainingsdata gevonden voor deze weken.
+              </div>
+            )}
+          </>
+        )}
+
+        {!isLoading && !compareData && weekA > 0 && weekB > 0 && (
+          <div className="text-center py-8 text-muted-foreground text-sm">
+            Selecteer twee weken met data om te vergelijken.
+          </div>
+        )}
       </div>
     </div>
   );
