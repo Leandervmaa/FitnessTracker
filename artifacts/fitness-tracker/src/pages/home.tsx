@@ -1,11 +1,12 @@
 import { Link } from "wouter";
 import { useEffect, useState } from "react";
 import { useWeek } from "@/components/week-context";
+import { useAuth } from "@/components/auth-context";
 import { useListWeeks } from "@workspace/api-client-react";
 import {
   Dumbbell, Book, MessageSquare, ChevronDown, Settings,
   AlertCircle, CheckCircle2, FileSpreadsheet, Download, Camera,
-  Clock, ArrowRightLeft
+  Clock, ArrowRight, Sparkles
 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
@@ -101,6 +102,7 @@ function NavCard({
 
 export default function Home() {
   const { selectedWeek, setSelectedWeek } = useWeek();
+  const { user } = useAuth();
   const { data: weeks } = useListWeeks();
   const dataStatus = useDataStatus();
   const [downloading, setDownloading] = useState(false);
@@ -139,22 +141,77 @@ export default function Home() {
   const photosDone    = currentWeekData?.photosComplete    ?? false;
   const workoutsTotal = currentWeekData?.workoutsTotal ?? 0;
   const workoutsCompleted = currentWeekData?.workoutsCompleted ?? 0;
+  const requiredSteps = [
+    ...(workoutsTotal > 0 ? [trainingDone] : []),
+    dagboekDone,
+    feedbackDone,
+    ...(isPhotoWeek ? [photosDone] : []),
+  ];
+  const completedSteps = requiredSteps.filter(Boolean).length;
+  const totalSteps = Math.max(1, requiredSteps.length);
+  const weekProgress = Math.round((completedSteps / totalSteps) * 100);
+  const firstName = user?.displayName?.split(" ")[0] || "topper";
+  const primaryAction =
+    workoutsTotal > 0 && !trainingDone
+      ? { href: "/trainingen", label: "Training starten", icon: <Dumbbell className="h-4 w-4" /> }
+      : !dagboekDone
+        ? { href: "/dagboek", label: "Eten invullen", icon: <Book className="h-4 w-4" /> }
+        : !feedbackDone
+          ? { href: "/feedback", label: "Feedback invullen", icon: <MessageSquare className="h-4 w-4" /> }
+          : isPhotoWeek && !photosDone
+            ? { href: "/progressie-fotos", label: "Foto's uploaden", icon: <Camera className="h-4 w-4" /> }
+            : { href: "/trainingen", label: "Bekijk je schema", icon: <Dumbbell className="h-4 w-4" /> };
+  const progressText =
+    weekProgress === 100
+      ? "Week compleet. Sterk werk."
+      : completedSteps === 0
+        ? "Vandaag is een goed moment om te beginnen."
+        : "Je bent lekker bezig. Houd dit ritme vast.";
 
   return (
-    <div className="min-h-[100dvh] w-full bg-background flex flex-col items-center p-6 pb-24 max-w-md mx-auto relative">
+    <div className="min-h-[100dvh] w-full bg-background flex flex-col items-center gap-4 p-4 pb-32 max-w-md mx-auto relative">
 
-      {/* Settings */}
-      <div className="w-full flex justify-end mb-2 -mt-1">
+      <header className="w-full flex items-center gap-3 pt-1">
+        <img src="/images/logo.png" alt="Bodyrebuild Logo" className="h-11 w-11 object-contain drop-shadow-sm" />
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Welkom {firstName}</p>
+          <h1 className="text-xl font-black text-foreground truncate">Week {selectedWeek || "—"}</h1>
+        </div>
         <Link href="/instellen">
           <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
             <Settings className="h-5 w-5" />
           </Button>
         </Link>
-      </div>
+      </header>
+
+      <section className="w-full rounded-xl border border-border bg-card p-4 shadow-sm">
+        <div className="flex items-center gap-4">
+          <div className="flex-1 min-w-0">
+            <div className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-black text-primary">
+              <Sparkles className="h-3.5 w-3.5" />
+              {progressText}
+            </div>
+            <h2 className="mt-3 text-2xl font-black text-foreground leading-tight">
+              {completedSteps} van {totalSteps} stappen klaar
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">Elke check-in brengt je dichter bij je doel.</p>
+          </div>
+          <div className="h-16 w-16 rounded-full border-4 border-primary/20 flex items-center justify-center shrink-0">
+            <span className="text-lg font-black text-primary">{weekProgress}%</span>
+          </div>
+        </div>
+        <Link href={primaryAction.href}>
+          <Button className="mt-4 h-12 w-full rounded-lg font-black">
+            {primaryAction.icon}
+            <span className="mx-2">{primaryAction.label}</span>
+            <ArrowRight className="h-4 w-4" />
+          </Button>
+        </Link>
+      </section>
 
       {/* Data source banner */}
       {dataStatus && (
-        <Link href="/instellen" className="w-full mb-4">
+        <Link href="/instellen" className="w-full">
           <div className={`w-full rounded-lg px-4 py-2.5 flex items-center gap-2.5 text-sm cursor-pointer transition-opacity hover:opacity-80 ${
             dataStatus.source === "excel"
               ? "bg-green-50 border border-green-200 text-green-800 dark:bg-green-950/30 dark:border-green-800 dark:text-green-300"
@@ -165,26 +222,16 @@ export default function Home() {
               : <AlertCircle  className="h-4 w-4 shrink-0" />}
             <span className="font-medium">
               {dataStatus.source === "excel"
-                ? `Excel geladen — ${dataStatus.weeksLoaded} weken`
+                ? `Schema klaar — ${dataStatus.weeksLoaded} weken`
                 : "Geen trainingsschema gekoppeld"}
             </span>
           </div>
         </Link>
       )}
 
-      {/* Logo + title */}
-      <div className="mt-4 mb-8 flex flex-col items-center">
-        <img src="/images/logo.png" alt="Bodyrebuild Logo" className="h-20 w-20 object-contain mb-4 drop-shadow-md" />
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">Mijn Fitness Tracker</h1>
-        {selectedWeek && currentWeekData && (
-          <span className={`mt-2 text-xs font-semibold px-3 py-1 rounded-full border ${
-            currentWeekData.isComplete
-              ? "bg-green-50 dark:bg-green-950/40 border-green-200 dark:border-green-800 text-green-700 dark:text-green-400"
-              : "bg-secondary border-border text-muted-foreground"
-          }`}>
-            {currentWeekData.isComplete ? "✓ Week compleet" : `Week ${selectedWeek} — bezig`}
-          </span>
-        )}
+      <div className="w-full flex items-center justify-between">
+        <h2 className="text-sm font-black uppercase tracking-wider text-foreground">Vandaag</h2>
+        <span className="text-xs font-bold text-muted-foreground">{completedSteps}/{totalSteps} klaar</span>
       </div>
 
       {/* Nav cards with per-section badges */}
@@ -211,10 +258,10 @@ export default function Home() {
           href="/dagboek"
           icon={<Book size={22} className="text-primary" />}
           iconBg="bg-primary/10"
-          title="Dagboek"
+          title="Eten"
           subtitle={dagboekDone
-            ? "Alle 7 dagen ingevuld"
-            : `${currentWeekData?.nutritionDaysCompleted ?? 0} van 7 dagen ingevuld`}
+            ? "Deze week netjes bijgehouden"
+            : `${currentWeekData?.nutritionDaysCompleted ?? 0} van 7 dagen bijgehouden`}
           badge={<StatusBadge done={dagboekDone} pendingLabel={`${currentWeekData?.nutritionDaysCompleted ?? 0}/7`} />}
         />
 
@@ -251,7 +298,7 @@ export default function Home() {
 
       {/* Week picker + download – compact strip above the bottom nav */}
       {weeks && selectedWeek && (
-        <div className="fixed bottom-16 right-4 flex items-center gap-2 z-40">
+        <div className="fixed bottom-24 right-4 flex items-center gap-2 z-40">
           <Button
             variant="outline" size="icon"
             onClick={handleDownload}

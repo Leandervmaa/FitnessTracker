@@ -149,23 +149,17 @@ function WorkoutCompare({ workoutA, workoutB }: { workoutA: Workout | undefined;
     return Array.from(names);
   }, [workoutA, workoutB]);
 
-  const getExVolume = (workout: Workout | undefined, name: string) => {
-    const ex = workout?.exercises.find((e) => e.name === name);
-    if (!ex) return null;
-    return ex.currentSetLogs.reduce((s, log) => s + (parseFloat(log.weight || "0") * (log.reps || 0)), 0);
-  };
-
   const getExSummary = (workout: Workout | undefined, name: string) => {
     const ex = workout?.exercises.find((e) => e.name === name);
     if (!ex || ex.currentSetLogs.length === 0) return null;
-    return ex.currentSetLogs.map((l) => `${l.weight || "?"}×${l.reps || "?"}`).join("  ");
+    return ex.currentSetLogs
+      .map((l) => `S${l.setNumber}: ${l.weight || "?"} kg · ${l.reps || "?"} reps`)
+      .join("  ");
   };
 
   return (
     <div className="space-y-1">
       {allExerciseNames.map((name) => {
-        const volA = getExVolume(workoutA, name);
-        const volB = getExVolume(workoutB, name);
         const summaryA = getExSummary(workoutA, name);
         const summaryB = getExSummary(workoutB, name);
         const inA = !!workoutA?.exercises.find((e) => e.name === name);
@@ -177,27 +171,17 @@ function WorkoutCompare({ workoutA, workoutB }: { workoutA: Workout | undefined;
             <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
               <div className="text-right">
                 {inA ? (
-                  <>
-                    <p className="text-xs text-muted-foreground">{summaryA || "geen logs"}</p>
-                    {volA !== null && volA > 0 && <p className="text-xs font-bold text-foreground">{Math.round(volA)} kg vol.</p>}
-                  </>
+                  <p className="text-xs text-muted-foreground leading-relaxed">{summaryA || "geen logs"}</p>
                 ) : (
                   <p className="text-xs text-muted-foreground italic">—</p>
                 )}
               </div>
               <div className="flex items-center justify-center">
-                {volA !== null && volB !== null && volA > 0 && volB > 0 ? (
-                  <DeltaBadge a={volA} b={volB} />
-                ) : (
-                  <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                )}
+                <ArrowRight className="h-3 w-3 text-muted-foreground" />
               </div>
               <div className="text-left">
                 {inB ? (
-                  <>
-                    <p className="text-xs text-muted-foreground">{summaryB || "geen logs"}</p>
-                    {volB !== null && volB > 0 && <p className="text-xs font-bold text-foreground">{Math.round(volB)} kg vol.</p>}
-                  </>
+                  <p className="text-xs text-muted-foreground leading-relaxed">{summaryB || "geen logs"}</p>
                 ) : (
                   <p className="text-xs text-muted-foreground italic">—</p>
                 )}
@@ -324,40 +308,6 @@ export default function VergelijkPage() {
 
         {compareData && (
           <>
-            {/* ─── Totaalvolume ─── */}
-            <section>
-              <div className="flex items-center gap-2 mb-3">
-                <Dumbbell className="h-4 w-4 text-primary" />
-                <h2 className="text-sm font-bold text-foreground uppercase tracking-wider">Training Totalen</h2>
-              </div>
-              <div className="rounded-xl bg-card border border-border p-4">
-                <StatRow
-                  label="Totaalvolume (kg)"
-                  valueA={compareData.weekA.totals.totalVolume}
-                  valueB={compareData.weekB.totals.totalVolume}
-                  decimals={0}
-                />
-                <StatRow
-                  label="Totaal sets"
-                  valueA={compareData.weekA.totals.totalSets}
-                  valueB={compareData.weekB.totals.totalSets}
-                  decimals={0}
-                />
-                <StatRow
-                  label="Totaal herhalingen"
-                  valueA={compareData.weekA.totals.totalReps}
-                  valueB={compareData.weekB.totals.totalReps}
-                  decimals={0}
-                />
-                <StatRow
-                  label="Trainingen"
-                  valueA={compareData.weekA.totals.workoutCount}
-                  valueB={compareData.weekB.totals.workoutCount}
-                  decimals={0}
-                />
-              </div>
-            </section>
-
             {/* ─── Metingen ─── */}
             <section>
               <div className="flex items-center gap-2 mb-3">

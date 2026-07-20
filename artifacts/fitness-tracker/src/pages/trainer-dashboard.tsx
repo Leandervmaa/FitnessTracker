@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLocation } from "wouter";
-import { BookOpen, CalendarDays, Download, FileSpreadsheet, Link as LinkIcon, LogOut, Plus, Search, UserRound, Pencil, PlayCircle, Trash2, Upload } from "lucide-react";
+import { AlertCircle, ArrowRight, BookOpen, CalendarDays, CheckCircle2, Download, FileSpreadsheet, Link as LinkIcon, LogOut, Plus, Search, UserRound, Pencil, PlayCircle, Trash2, Upload, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -92,6 +92,9 @@ export default function TrainerDashboard() {
         .some((value) => String(value).toLowerCase().includes(q)),
     );
   }, [clients, query]);
+  const connectedClients = clients.filter((client) => client.liveSheetUrl || client.liveSheetType === "excel_upload").length;
+  const missingSheetClients = Math.max(0, clients.length - connectedClients);
+  const activeClient = clients.find((client) => client.id === activeClientId);
 
   const openNew = () => {
     setEditing(null);
@@ -193,13 +196,13 @@ export default function TrainerDashboard() {
   return (
     <div className="min-h-[100dvh] w-full bg-background flex flex-col">
       <header className="w-full border-b border-border bg-background/90 backdrop-blur-md sticky top-0 z-10">
-        <div className="max-w-5xl mx-auto px-4 py-4 flex items-center gap-3">
+        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center gap-3">
           <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
             <UserRound className="h-5 w-5 text-primary" />
           </div>
           <div className="flex-1">
-            <h1 className="text-xl font-black text-foreground">Trainer menu</h1>
-            <p className="text-xs text-muted-foreground">Klanten beheren en trajecten openen</p>
+            <h1 className="text-xl font-black text-foreground">Coach overzicht</h1>
+            <p className="text-xs text-muted-foreground">Klanten, schema's en voortgang op een rij</p>
           </div>
           <Button variant="ghost" size="icon" onClick={logout} title="Uitloggen">
             <LogOut className="h-5 w-5" />
@@ -207,80 +210,151 @@ export default function TrainerDashboard() {
         </div>
       </header>
 
-      <main className="w-full max-w-5xl mx-auto p-4 md:p-6 space-y-4">
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input value={query} onChange={(e) => setQuery(e.target.value)} className="pl-10 h-11" placeholder="Zoek klant, doel of gebruikersnaam" />
-          </div>
-          <Button variant="outline" onClick={() => setLocation("/bibliotheek")} className="h-11 font-bold">
-            <BookOpen className="h-4 w-4 mr-2" />
-            Bibliotheek
-          </Button>
-          <Button onClick={openNew} className="h-11 font-bold">
-            <Plus className="h-4 w-4 mr-2" />
-            Klant toevoegen
-          </Button>
-        </div>
+      <main className="w-full max-w-7xl mx-auto p-4 md:p-6 space-y-5">
+        <section className="grid gap-3 md:grid-cols-3">
+          <CoachStat icon={<Users className="h-5 w-5" />} label="Klanten" value={clients.length} />
+          <CoachStat icon={<CheckCircle2 className="h-5 w-5" />} label="Data gekoppeld" value={connectedClients} />
+          <CoachStat icon={<AlertCircle className="h-5 w-5" />} label="Aandacht nodig" value={missingSheetClients} muted={missingSheetClients === 0} />
+        </section>
 
-        <div className="grid gap-3 md:grid-cols-2">
-          {filtered.map((client) => (
-            <div key={client.id} className="bg-card border border-border rounded-xl p-4 shadow-sm">
-              <div className="flex items-start gap-3">
-                <div className="h-11 w-11 rounded-lg bg-secondary flex items-center justify-center shrink-0">
-                  <UserRound className="h-5 w-5 text-muted-foreground" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h2 className="font-black text-foreground truncate">{client.name}</h2>
-                  <p className="text-xs text-muted-foreground truncate">{client.goal || "Geen doel ingevuld"}</p>
-                  <p className="text-xs font-semibold text-primary mt-1">Login: {client.user?.username || "nog geen account"}</p>
-                  <p className="text-xs text-muted-foreground mt-1 truncate">
-                    {client.liveSheetUrl ? "Live Google Sheet gekoppeld" : client.liveSheetType === "excel_upload" ? "Excel-bestand geupload" : "Nog geen schema gekoppeld"}
-                  </p>
-                </div>
+        <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="space-y-3">
+            <div className="flex flex-col md:flex-row gap-3">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input value={query} onChange={(e) => setQuery(e.target.value)} className="pl-10 h-11" placeholder="Zoek klant, doel of gebruikersnaam" />
               </div>
-              <div className="flex gap-2 mt-4">
-                <Button className="flex-1 font-bold" onClick={() => openClient(client.id)}>
-                  <PlayCircle className="h-4 w-4 mr-2" />
-                  Traject openen
+              <Button onClick={openNew} className="h-11 font-bold">
+                <Plus className="h-4 w-4 mr-2" />
+                Klant toevoegen
+              </Button>
+            </div>
+
+            <div className="overflow-hidden rounded-lg border border-border bg-card">
+              <div className="hidden md:grid grid-cols-[minmax(180px,1.15fr)_minmax(170px,1fr)_150px_130px_300px] gap-3 bg-muted/40 px-4 py-2 text-[11px] font-black uppercase tracking-wider text-muted-foreground">
+                <span>Klant</span>
+                <span>Doel</span>
+                <span>Data</span>
+                <span>Login</span>
+                <span className="text-right">Acties</span>
+              </div>
+
+              {filtered.length === 0 ? (
+                <div className="p-10 text-center">
+                  <Users className="h-9 w-9 text-muted-foreground mx-auto mb-3" />
+                  <p className="font-bold text-foreground">Geen klanten gevonden</p>
+                  <p className="text-sm text-muted-foreground mt-1">Pas je zoekopdracht aan of voeg een klant toe.</p>
+                </div>
+              ) : (
+                filtered.map((client) => {
+                  const hasData = !!client.liveSheetUrl || client.liveSheetType === "excel_upload";
+                  const isActive = activeClientId === client.id;
+
+                  return (
+                    <div
+                      key={client.id}
+                      className={`grid gap-3 border-t border-border px-4 py-3 md:grid-cols-[minmax(180px,1.15fr)_minmax(170px,1fr)_150px_130px_300px] md:items-center ${isActive ? "bg-primary/5" : ""}`}
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h2 className="font-black text-foreground truncate">{client.name}</h2>
+                          {isActive && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-black text-primary">Actief</span>}
+                        </div>
+                        <p className="md:hidden text-xs text-muted-foreground mt-1 truncate">{client.goal || "Geen doel ingevuld"}</p>
+                      </div>
+                      <p className="hidden md:block text-sm text-muted-foreground truncate">{client.goal || "Geen doel ingevuld"}</p>
+                      <div>
+                        <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold ${hasData ? "bg-green-50 text-green-700 border border-green-200 dark:bg-green-950/30 dark:text-green-300 dark:border-green-800" : "bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-800"}`}>
+                          {hasData ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertCircle className="h-3.5 w-3.5" />}
+                          {client.liveSheetUrl ? "Live sheet" : client.liveSheetType === "excel_upload" ? "Excel" : "Geen data"}
+                        </span>
+                      </div>
+                      <p className="text-sm font-semibold text-muted-foreground truncate">{client.user?.username || "geen login"}</p>
+                      <div className="flex flex-wrap items-center justify-start gap-2 md:justify-end">
+                        <Button size="sm" className="font-bold" onClick={() => openClient(client.id)}>
+                          <PlayCircle className="h-4 w-4 mr-1.5" />
+                          Openen
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="font-bold"
+                          onClick={() => {
+                            setActiveClientId(client.id);
+                            setLocation("/weekplanner");
+                          }}
+                        >
+                          <CalendarDays className="h-4 w-4 mr-1.5" />
+                          Planner
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={() => downloadClientExcel(client.id, client.name)}
+                          disabled={downloadingClient === client.id}
+                          title="Exporteren"
+                        >
+                          <Download className="h-4 w-4" />
+                        </Button>
+                        <Button variant="outline" size="icon" onClick={() => openEdit(client)} title="Bewerken">
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={() => deleteClient(client)}
+                          disabled={deletingClient === client.id}
+                          title="Klant verwijderen"
+                          className="text-destructive hover:text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          <aside className="space-y-3">
+            <div className="rounded-lg border border-border bg-card p-4">
+              <h2 className="text-base font-black text-foreground">Snelle acties</h2>
+              <div className="mt-4 space-y-2">
+                <Button onClick={openNew} className="w-full justify-between font-bold">
+                  Klant toevoegen <Plus className="h-4 w-4" />
+                </Button>
+                <Button variant="outline" onClick={() => setLocation("/bibliotheek")} className="w-full justify-between font-bold">
+                  Bibliotheek <BookOpen className="h-4 w-4" />
                 </Button>
                 <Button
                   variant="outline"
-                  className="flex-1 font-bold"
-                  onClick={() => {
-                    setActiveClientId(client.id);
-                    setLocation("/weekplanner");
-                  }}
+                  disabled={!activeClientId}
+                  onClick={() => setLocation("/weekplanner")}
+                  className="w-full justify-between font-bold"
                 >
-                  <CalendarDays className="h-4 w-4 mr-2" />
-                  Weekplanner
+                  Weekplanner <CalendarDays className="h-4 w-4" />
                 </Button>
                 <Button
                   variant="outline"
-                  size="icon"
-                  onClick={() => downloadClientExcel(client.id, client.name)}
-                  disabled={downloadingClient === client.id}
-                  title="Weekplanning exporteren als Excel"
+                  disabled={!activeClientId}
+                  onClick={() => setLocation("/vergelijk")}
+                  className="w-full justify-between font-bold"
                 >
-                  <Download className="h-4 w-4" />
-                </Button>
-                <Button variant="outline" size="icon" onClick={() => openEdit(client)}>
-                  <Pencil className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => deleteClient(client)}
-                  disabled={deletingClient === client.id}
-                  title="Klant verwijderen"
-                  className="text-destructive hover:text-destructive"
-                >
-                  <Trash2 className="h-4 w-4" />
+                  Voortgang vergelijken <ArrowRight className="h-4 w-4" />
                 </Button>
               </div>
             </div>
-          ))}
-        </div>
+
+            <div className="rounded-lg border border-border bg-card p-4">
+              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Actieve klant</p>
+              <h2 className="mt-1 text-lg font-black text-foreground">{activeClient?.name || "Geen klant gekozen"}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {activeClient ? activeClient.goal || "Geen doel ingevuld" : "Open een klant om planning, voeding en voortgang te beheren."}
+              </p>
+            </div>
+          </aside>
+        </section>
       </main>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -345,6 +419,20 @@ function Field({ label, value, onChange, type = "text" }: { label: string; value
     <div className="space-y-1.5">
       <Label>{label}</Label>
       <Input type={type} value={value} onChange={(e) => onChange(e.target.value)} />
+    </div>
+  );
+}
+
+function CoachStat({ icon, label, value, muted = false }: { icon: ReactNode; label: string; value: number; muted?: boolean }) {
+  return (
+    <div className="rounded-lg border border-border bg-card p-4 flex items-center gap-3">
+      <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${muted ? "bg-secondary text-muted-foreground" : "bg-primary/10 text-primary"}`}>
+        {icon}
+      </div>
+      <div>
+        <p className="text-2xl font-black text-foreground leading-none">{value}</p>
+        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mt-1">{label}</p>
+      </div>
     </div>
   );
 }

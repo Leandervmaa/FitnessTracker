@@ -218,7 +218,7 @@ export default function FeedbackList() {
 
       <Progress value={progress} className="h-1 w-full rounded-none bg-secondary" />
 
-      <main className="w-full p-6 flex flex-col flex-1 pb-24">
+      <main className="w-full p-6 flex flex-col flex-1 pb-44">
         <div className="bg-card border border-border rounded-xl p-6 shadow-sm flex-1 flex flex-col">
           <h2 className="text-2xl font-bold text-foreground mb-6 leading-tight">
             {currentQuestion?.question}
@@ -234,7 +234,7 @@ export default function FeedbackList() {
         </div>
       </main>
 
-      <div className="fixed bottom-0 left-0 w-full p-4 bg-background border-t border-border z-20 flex justify-center">
+      <div className="fixed bottom-20 left-0 w-full p-4 bg-background border-t border-border z-20 flex justify-center">
         <div className="w-full max-w-md">
           <Button 
             onClick={handleNext} 

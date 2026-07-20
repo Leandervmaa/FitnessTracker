@@ -906,28 +906,6 @@ export default function WeekplannerPage() {
             </span>
 
             <div className="flex items-center gap-1">
-              <span className="text-xs text-muted-foreground mr-1">Gewicht</span>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 px-2 text-xs font-bold"
-                disabled={bulkAdjust.isPending}
-                onClick={() => bulkAdjust.mutate("weight+10")}
-              >
-                +10%
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 px-2 text-xs font-bold"
-                disabled={bulkAdjust.isPending}
-                onClick={() => bulkAdjust.mutate("weight-10")}
-              >
-                −10%
-              </Button>
-            </div>
-
-            <div className="flex items-center gap-1">
               <span className="text-xs text-muted-foreground mr-1">Herhalingen</span>
               <Button
                 variant="outline"

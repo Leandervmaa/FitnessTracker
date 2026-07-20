@@ -578,7 +578,7 @@ export default function TrainingDetail() {
             setNumber: index + 1,
             weight: input.weights[index] || null,
             reps: input.repsList[index] || null,
-            rpe: input.rpeList[index] || null,
+            rpe: input.exercise.targetRpe || null,
             notes: input.notes || null,
           }),
         });
@@ -767,7 +767,7 @@ export default function TrainingDetail() {
       .split(",")
       [idx]?.trim();
     if (prevWeekWeight) return prevWeekWeight;
-    return "0";
+    return "";
   };
 
   const getRepsPlaceholder = (idx: number): string => {
@@ -784,18 +784,7 @@ export default function TrainingDetail() {
       .split(",")
       [idx]?.trim();
     if (prevWeekReps) return prevWeekReps;
-    return "0";
-  };
-
-  const getRpePlaceholder = (idx: number): string => {
-    // 1. Trainer-prescribed RPE
-    if (exercise.targetRpe) return exercise.targetRpe.toString();
-    // 2. Previous week logged RPE
-    const prevLog = exercise.previousSetLogs?.find(
-      (log) => log.setNumber === idx + 1
-    );
-    if (prevLog?.rpe) return prevLog.rpe.toString();
-    return "0";
+    return "";
   };
 
   const progress = (currentStep / exercises.length) * 100;
@@ -862,7 +851,7 @@ export default function TrainingDetail() {
 
         <Progress value={progress} className="h-1 rounded-none bg-secondary" />
 
-        <main className="flex-1 p-6 flex flex-col overflow-y-auto pb-36">
+        <main className="flex-1 p-6 flex flex-col overflow-y-auto pb-44">
           {/* Exercise image */}
           {imageUrl ? (
             <div className="w-full aspect-video bg-muted rounded-xl mb-6 overflow-hidden border border-border relative">
@@ -895,8 +884,12 @@ export default function TrainingDetail() {
             </h2>
             <div className="text-lg text-primary font-bold">
               {exercise.sets} sets × {repLabel || "–"} reps
-              {exercise.targetRpe ? ` @ RPE ${exercise.targetRpe}` : ""}
             </div>
+            {exercise.targetRpe && (
+              <div className="mt-3 inline-flex items-center rounded-lg border border-primary/20 bg-primary/10 px-3 py-2 text-sm font-black text-primary">
+                Richtlijn: RPE {exercise.targetRpe}
+              </div>
+            )}
           </div>
 
           {/* Set inputs */}
@@ -904,9 +897,7 @@ export default function TrainingDetail() {
             {Array.from({ length: exercise.sets || 1 }).map((_, idx) => (
               <div
                 key={idx}
-                className={`grid gap-3 ${
-                  isPlannedWorkout ? "grid-cols-3" : "grid-cols-2"
-                }`}
+                className="grid grid-cols-2 gap-3"
               >
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold">
@@ -942,25 +933,6 @@ export default function TrainingDetail() {
                     placeholder={getRepsPlaceholder(idx)}
                   />
                 </div>
-                {isPlannedWorkout && (
-                  <div className="space-y-2">
-                    <Label className="text-sm font-semibold">
-                      Set {idx + 1} - RPE
-                    </Label>
-                    <Input
-                      type="number"
-                      inputMode="decimal"
-                      value={rpeList[idx] || ""}
-                      onChange={(e) => {
-                        const newRpe = [...rpeList];
-                        newRpe[idx] = e.target.value;
-                        setRpeList(newRpe);
-                      }}
-                      className="h-14 text-xl font-bold px-4 bg-card"
-                      placeholder={getRpePlaceholder(idx)}
-                    />
-                  </div>
-                )}
               </div>
             ))}
 
@@ -981,7 +953,7 @@ export default function TrainingDetail() {
         </main>
 
         {/* ── Bottom bar ── */}
-        <div className="fixed bottom-16 left-0 w-full p-4 bg-background border-t border-border z-20">
+        <div className="fixed bottom-20 left-0 w-full p-4 bg-background border-t border-border z-20">
           <div className="w-full max-w-md mx-auto flex flex-col gap-2">
             <Button
               onClick={handleNext}
