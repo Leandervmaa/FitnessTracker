@@ -69,7 +69,14 @@ router.post("/excel", requireTrainer, upload.single("file"), async (req, res) =>
   }
 
   // Sync parsed Excel data into the database
-  let importStats = { weeksImported: 0, workoutsCreated: 0, exercisesCreated: 0 };
+  let importStats = {
+    weeksImported: 0,
+    workoutsCreated: 0,
+    exercisesCreated: 0,
+    setLogsImported: 0,
+    nutritionEntriesImported: 0,
+    feedbackAnswersImported: 0,
+  };
   try {
     importStats = await importExcelToDb(clientId, result);
   } catch (err) {
@@ -86,6 +93,9 @@ router.post("/excel", requireTrainer, upload.single("file"), async (req, res) =>
     wekenGeimporteerd: importStats.weeksImported,
     trainingenAangemaakt: importStats.workoutsCreated,
     oefeninenAangemaakt: importStats.exercisesCreated,
+    setsGeimporteerd: importStats.setLogsImported,
+    dagboekInvoerGeimporteerd: importStats.nutritionEntriesImported,
+    feedbackAntwoordenGeimporteerd: importStats.feedbackAnswersImported,
     feedbackVragen: result.feedbackQuestions.length,
     parsedAt: result.parsedAt,
     kanOngedaanMaken: true,

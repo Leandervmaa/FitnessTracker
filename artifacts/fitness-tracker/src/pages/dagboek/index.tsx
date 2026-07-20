@@ -10,7 +10,7 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { ChevronLeft, BookOpen, Save, TrendingUp, Info } from "lucide-react";
+import { ChevronLeft, BookOpen, Save, TrendingUp, Info, UtensilsCrossed } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -93,6 +93,7 @@ export default function DagboekPage() {
   const { toast } = useToast();
   
   const [activeDay, setActiveDay] = useState(DAYS[0].id);
+  const [showDagboek, setShowDagboek] = useState(false);
 
   const { data: progressieWeek } = useProgressieWeek(selectedWeek ?? undefined);
   const { data: nutritionTarget } = useGetNutritionTarget();
@@ -183,8 +184,8 @@ export default function DagboekPage() {
             <ChevronLeft className="h-6 w-6" />
           </Button>
           <div className="flex-1 flex items-center min-w-0">
-            <BookOpen className="w-5 h-5 text-primary mr-2 shrink-0" />
-            <h1 className="text-xl font-bold text-foreground truncate">Dagboek</h1>
+            <UtensilsCrossed className="w-5 h-5 text-primary mr-2 shrink-0" />
+            <h1 className="text-xl font-bold text-foreground truncate">Eten</h1>
           </div>
           <WeekSelector />
         </div>
@@ -274,6 +275,8 @@ export default function DagboekPage() {
                   onSave={(data) => handleSave(day.id, data)}
                   isSaving={createEntry.isPending || updateEntry.isPending}
                   requestedFields={progressieWeek?.requestedFields || []}
+                  showDagboek={showDagboek}
+                  onToggleDagboek={() => setShowDagboek((value) => !value)}
                 />
               </TabsContent>
             );
@@ -297,7 +300,7 @@ function parseEntry(entry: any) {
   return { metrics, notes };
 }
 
-function DagForm({ day, weekNumber, entry, sheetDay, targetKcal, targetProteinG, targetCarbsG, targetFatG, onSave, isSaving, requestedFields }: {
+function DagForm({ day, weekNumber, entry, sheetDay, targetKcal, targetProteinG, targetCarbsG, targetFatG, onSave, isSaving, requestedFields, showDagboek, onToggleDagboek }: {
   day: { id: string; label: string; nl: string };
   weekNumber: number;
   entry?: any;
@@ -309,6 +312,8 @@ function DagForm({ day, weekNumber, entry, sheetDay, targetKcal, targetProteinG,
   onSave: (data: any) => void;
   isSaving: boolean;
   requestedFields: string[];
+  showDagboek: boolean;
+  onToggleDagboek: () => void;
 }) {
   const buildForm = () => {
     const { metrics, notes } = parseEntry(entry);
@@ -608,72 +613,86 @@ function DagForm({ day, weekNumber, entry, sheetDay, targetKcal, targetProteinG,
         </div>
       )}
 
-      {/* Sectie: Lichaamsmaten */}
-      {shownLichaamsmaten.length > 0 && (
-        <div>
-          <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Lichaamsmaten</p>
-          <div className={responsiveGridClass}>
-            {shownLichaamsmaten}
-          </div>
-        </div>
-      )}
-
       {/* Sectie: Voeding */}
-      {isShown("kcal") && (
-        <div>
-          <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">Voeding</p>
-          <FoodTracker
-            key={`food-${day.id}-${entry?.id ?? 'new'}`}
-            weekNumber={weekNumber}
-            day={day.id}
-            dayLabel={day.nl}
-            sheetKcal={sheetDay?.kcal ?? null}
-            targetKcal={targetKcal}
-            targetProteinG={targetProteinG}
-            targetCarbsG={targetCarbsG}
-            targetFatG={targetFatG}
-            savedManualKcal={currentManualKcal}
-            onManualKcalChange={setCurrentManualKcal}
-          />
-        </div>
-      )}
-
-      {/* Sectie: Welzijn */}
-      {showWellnessSection && (
-        <div>
-          <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Welzijn &amp; Prestatie</p>
-          <div className={responsiveGridClass}>
-            {shownWellness1}
-            {shownWellness2}
-          </div>
-        </div>
-      )}
-
-      {/* Sectie: Omvangsmaten */}
-      {showCircumferenceSection && (
-        <div>
-          <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Omvangsmaten</p>
-          <div className={responsiveGridClass}>
-            {shownCircumference}
-          </div>
-        </div>
-      )}
-
-      {/* Notities */}
-      <div className={fieldCardClass}>
-        <Label className="text-xs font-semibold">Notities</Label>
-        <Textarea
-          name="notes" value={formData.notes} onChange={handleChange}
-          className="min-h-24 resize-none" placeholder="Bijv. voelde me moe, spierpijn..."
+      <div>
+        <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">Voeding</p>
+        <FoodTracker
+          key={`food-${day.id}-${entry?.id ?? 'new'}`}
+          weekNumber={weekNumber}
+          day={day.id}
+          dayLabel={day.nl}
+          sheetKcal={sheetDay?.kcal ?? null}
+          targetKcal={targetKcal}
+          targetProteinG={targetProteinG}
+          targetCarbsG={targetCarbsG}
+          targetFatG={targetFatG}
+          savedManualKcal={currentManualKcal}
+          onManualKcalChange={setCurrentManualKcal}
         />
       </div>
+
+      <div className="flex justify-center">
+        <Button
+          type="button"
+          variant={showDagboek ? "secondary" : "outline"}
+          onClick={onToggleDagboek}
+          className="w-4/5 h-11 rounded-lg font-bold"
+        >
+          <BookOpen className="w-4 h-4 mr-2" />
+          {showDagboek ? "Dagboek verbergen" : "Dagboek"}
+        </Button>
+      </div>
+
+      {showDagboek && (
+        <>
+          {/* Sectie: Lichaamsmaten */}
+          {shownLichaamsmaten.length > 0 && (
+            <div>
+              <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Lichaamsmaten</p>
+              <div className={responsiveGridClass}>
+                {shownLichaamsmaten}
+              </div>
+            </div>
+          )}
+
+          {/* Sectie: Welzijn */}
+          {showWellnessSection && (
+            <div>
+              <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Welzijn &amp; Prestatie</p>
+              <div className={responsiveGridClass}>
+                {shownWellness1}
+                {shownWellness2}
+              </div>
+            </div>
+          )}
+
+          {/* Sectie: Omvangsmaten */}
+          {showCircumferenceSection && (
+            <div>
+              <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Omvangsmaten</p>
+              <div className={responsiveGridClass}>
+                {shownCircumference}
+              </div>
+            </div>
+          )}
+
+          {/* Notities */}
+          <div className={fieldCardClass}>
+            <Label className="text-xs font-semibold">Notities</Label>
+            <Textarea
+              name="notes" value={formData.notes} onChange={handleChange}
+              className="min-h-24 resize-none" placeholder="Bijv. voelde me moe, spierpijn..."
+            />
+          </div>
+        </>
+      )}
 
       <Button
         className="w-full h-12 font-bold rounded-lg"
         onClick={() => onSave({ ...formData, totalKcal, totalProteinG: loggedProteinG, totalCarbsG: loggedCarbsG, totalFatG: loggedFatG, manualKcal: currentManualKcal })}
         disabled={isSaving}
       >
-        <Save className="w-5 h-5 mr-2" /> Opslaan
+        <Save className="w-5 h-5 mr-2" /> {showDagboek ? "Opslaan" : "Eten opslaan"}
       </Button>
     </div>
   );
