@@ -6,6 +6,7 @@ import { WeekProvider } from "@/components/week-context";
 import { AuthProvider, useAuth } from "@/components/auth-context";
 import { ClientProvider, useClient } from "@/components/client-context";
 import { TrainerClientBar } from "@/components/trainer-client-bar";
+import { BottomNav } from "@/components/bottom-nav";
 import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 import NotFound from "@/pages/not-found";
 
@@ -129,10 +130,21 @@ function AuthShell() {
           <RealtimeSyncBridge />
           <TrainerClientBar />
           <Router />
+          <ClientBottomNav />
         </WouterRouter>
       </WeekProvider>
     </ClientProvider>
   );
+}
+
+/** Shows bottom nav only when the logged-in user is a client (not a trainer) */
+function ClientBottomNav() {
+  const { user } = useAuth();
+  const { activeClientId } = useClient();
+  // Trainers acting as themselves don't get the bottom nav;
+  // trainers viewing a client DO get it (they see the client view)
+  if (user?.role === "trainer" && !activeClientId) return null;
+  return <BottomNav />;
 }
 
 export default App;

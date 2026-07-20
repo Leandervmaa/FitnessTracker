@@ -400,61 +400,82 @@ function SkipExerciseDialog({
 function WorkoutOverview({
   workout,
   onStart,
+  onSelectExercise,
+  onBack,
 }: {
   workout: WorkoutLike;
   onStart: () => void;
+  onSelectExercise: (index: number) => void;
+  onBack: () => void;
 }) {
   return (
     <div className="min-h-[100dvh] w-full bg-background flex flex-col max-w-md mx-auto">
       <header className="w-full p-4 flex items-center border-b border-border">
-        <div className="flex-1">
-          <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onBack}
+          className="mr-2 -ml-1 shrink-0"
+          aria-label="Terug"
+        >
+          <ChevronLeft className="h-6 w-6" />
+        </Button>
+        <div className="flex-1 min-w-0">
+          <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-0.5">
             {workout.dayLabel}
           </div>
-          <h1 className="text-2xl font-black text-foreground">{workout.name}</h1>
+          <h1 className="text-xl font-black text-foreground truncate">{workout.name}</h1>
         </div>
       </header>
 
-      <main className="flex-1 p-6 flex flex-col gap-3 overflow-y-auto pb-28">
-        <p className="text-sm text-muted-foreground mb-2">
-          {workout.exercises.length} oefeningen
+      <main className="flex-1 p-4 flex flex-col gap-2.5 overflow-y-auto pb-36">
+        <p className="text-sm text-muted-foreground mb-1">
+          {workout.exercises.length} oefeningen — tik om direct te beginnen
         </p>
         {workout.exercises.map((ex, idx) => {
           const repLabel = ex.repRange || ex.reps;
           const newEx = isNewExercise(ex);
+          const hasLogs = ex.currentSetLogs && ex.currentSetLogs.length > 0;
           return (
-            <div
+            <button
               key={ex.id}
-              className="bg-card border border-border rounded-xl p-4 flex flex-col gap-1"
+              type="button"
+              onClick={() => onSelectExercise(idx)}
+              className="w-full text-left bg-card border border-border rounded-xl p-4 flex items-center gap-3 hover:border-primary/50 hover:bg-primary/5 active:scale-[0.98] transition-all"
             >
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-muted-foreground w-5">
-                  {idx + 1}.
-                </span>
-                <span className="font-bold text-foreground flex-1">
-                  {ex.name}
-                </span>
-                {newEx && (
-                  <Badge className="bg-green-500 text-white text-xs px-2 py-0.5 shrink-0">
-                    Nieuw
-                  </Badge>
+              <span
+                className={`
+                  h-8 w-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0
+                  ${hasLogs
+                    ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400"
+                    : "bg-muted text-muted-foreground"
+                  }
+                `}
+              >
+                {hasLogs ? <Check className="h-4 w-4" /> : idx + 1}
+              </span>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-foreground truncate">{ex.name}</span>
+                  {newEx && (
+                    <Badge className="bg-green-500 text-white text-[10px] px-1.5 py-0.5 shrink-0">Nieuw</Badge>
+                  )}
+                </div>
+                <div className="text-sm text-primary font-semibold">
+                  {ex.sets} sets × {repLabel || "–"} reps
+                  {ex.targetRpe ? ` @ RPE ${ex.targetRpe}` : ""}
+                </div>
+                {ex.notes && (
+                  <div className="text-xs text-muted-foreground italic truncate">{ex.notes}</div>
                 )}
               </div>
-              <div className="text-sm text-primary font-semibold pl-7">
-                {ex.sets} sets × {repLabel || "–"} reps
-                {ex.targetRpe ? ` @ RPE ${ex.targetRpe}` : ""}
-              </div>
-              {ex.notes && (
-                <div className="text-xs text-muted-foreground pl-7 italic">
-                  {ex.notes}
-                </div>
-              )}
-            </div>
+              <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
+            </button>
           );
         })}
       </main>
 
-      <div className="fixed bottom-0 left-0 w-full p-4 bg-background border-t border-border z-20 flex justify-center">
+      <div className="fixed bottom-16 left-0 w-full p-4 bg-background border-t border-border z-20 flex justify-center">
         <div className="w-full max-w-md">
           <Button
             onClick={onStart}
@@ -481,6 +502,8 @@ export default function TrainingDetail() {
   const [overview, setOverview] = useState(true);
   const [currentStep, setCurrentStep] = useState(0);
   const [isFinished, setIsFinished] = useState(false);
+  // When true, "Next" goes back to the overview instead of auto-advancing
+  const returnToOverviewAfterSave = true;
 
   // Modal/dialog state
   const [stopwatchOpen, setStopwatchOpen] = useState(false);
@@ -628,7 +651,12 @@ export default function TrainingDetail() {
   // ── Overview screen ────────────────────────────────────────────────────────
   if (overview) {
     return (
-      <WorkoutOverview workout={workout} onStart={() => setOverview(false)} />
+      <WorkoutOverview
+        workout={workout}
+        onStart={() => { setCurrentStep(0); setOverview(false); }}
+        onSelectExercise={(idx) => { setCurrentStep(idx); setOverview(false); }}
+        onBack={() => setLocation("/trainingen")}
+      />
     );
   }
 
@@ -660,11 +688,8 @@ export default function TrainingDetail() {
   // ── Handlers ───────────────────────────────────────────────────────────────
 
   const advanceStep = () => {
-    if (currentStep < exercises.length - 1) {
-      setCurrentStep((prev) => prev + 1);
-    } else {
-      setIsFinished(true);
-    }
+    // Always return to the overview so the user can pick the next exercise
+    setOverview(true);
   };
 
   const handleNext = () => {
@@ -802,8 +827,9 @@ export default function TrainingDetail() {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => setLocation("/trainingen")}
+            onClick={() => setOverview(true)}
             className="mr-2"
+            aria-label="Terug naar overzicht"
           >
             <ChevronLeft className="h-6 w-6" />
           </Button>
@@ -955,7 +981,7 @@ export default function TrainingDetail() {
         </main>
 
         {/* ── Bottom bar ── */}
-        <div className="fixed bottom-0 left-0 w-full p-4 bg-background border-t border-border z-20">
+        <div className="fixed bottom-16 left-0 w-full p-4 bg-background border-t border-border z-20">
           <div className="w-full max-w-md mx-auto flex flex-col gap-2">
             <Button
               onClick={handleNext}
@@ -964,13 +990,9 @@ export default function TrainingDetail() {
             >
               {isPending ? (
                 <div className="w-6 h-6 rounded-full border-2 border-primary-foreground border-t-transparent animate-spin mr-2" />
-              ) : currentStep === exercises.length - 1 ? (
-                <>
-                  Afronden <Check className="ml-2 w-5 h-5" />
-                </>
               ) : (
                 <>
-                  Volgende oefening <ArrowRight className="ml-2 w-5 h-5" />
+                  Opslaan & terug naar overzicht <Check className="ml-2 w-5 h-5" />
                 </>
               )}
             </Button>

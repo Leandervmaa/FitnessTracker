@@ -248,33 +248,29 @@ export default function Home() {
         />
       </div>
 
-      {/* Bottom bar: week picker + download */}
+
+      {/* Week picker + download – compact strip above the bottom nav */}
       {weeks && selectedWeek && (
-        <div className="fixed bottom-6 right-6 flex items-center gap-2">
+        <div className="fixed bottom-16 right-4 flex items-center gap-2 z-40">
           <Button
             variant="outline" size="icon"
             onClick={handleDownload}
             disabled={downloading}
-            className="rounded-full shadow-md bg-card border-border h-12 w-12 flex-shrink-0"
+            className="rounded-full shadow-md bg-card border-border h-10 w-10 flex-shrink-0"
             title="Download bijgewerkt Excel"
           >
-            <Download className={`h-5 w-5 text-green-600 dark:text-green-400 ${downloading ? "animate-pulse" : ""}`} />
+            <Download className={`h-4 w-4 text-green-600 dark:text-green-400 ${downloading ? "animate-pulse" : ""}`} />
           </Button>
           <Link href="/excel-viewer">
-            <Button variant="outline" size="icon" className="rounded-full shadow-md bg-card border-border h-12 w-12 flex-shrink-0" title="Bekijk Excel schema">
-              <FileSpreadsheet className="h-5 w-5 text-green-600 dark:text-green-400" />
-            </Button>
-          </Link>
-          <Link href="/vergelijk">
-            <Button variant="outline" size="icon" className="rounded-full shadow-md bg-card border-border h-12 w-12 flex-shrink-0" title="Vergelijk Weken (voor PT)">
-              <ArrowRightLeft className="h-5 w-5 text-primary" />
+            <Button variant="outline" size="icon" className="rounded-full shadow-md bg-card border-border h-10 w-10 flex-shrink-0" title="Bekijk Excel schema">
+              <FileSpreadsheet className="h-4 w-4 text-green-600 dark:text-green-400" />
             </Button>
           </Link>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="rounded-full shadow-md bg-card border-border h-12 px-4 font-semibold">
+              <Button variant="outline" className="rounded-full shadow-md bg-card border-border h-10 px-3 font-semibold text-sm">
                 Week {selectedWeek}
-                <ChevronDown className="ml-2 h-4 w-4 text-muted-foreground" />
+                <ChevronDown className="ml-1.5 h-3.5 w-3.5 text-muted-foreground" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">

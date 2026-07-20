@@ -4,6 +4,7 @@ import { db } from "@workspace/db";
 import {
   exerciseLibraryTable,
   exerciseSetLogsTable,
+  nutritionEntriesTable,
   nutritionTargetsTable,
   plannedWorkoutExercisesTable,
   plannedWorkoutsTable,
@@ -302,6 +303,63 @@ router.delete("/workouts/:workoutId", requireTrainer, async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "Failed to delete planned workout");
     return void res.status(500).json({ error: "Training verwijderen mislukt" });
+  }
+});
+
+router.post("/workouts/:workoutId/copy", requireTrainer, async (req, res) => {
+  try {
+    const clientId = getScopedClientId(req);
+    const workoutId = param(req.params.workoutId);
+    const targetWeekNumber = intValue(req.body?.targetWeekNumber, 0);
+    if (targetWeekNumber < 1) return void res.status(400).json({ error: "Doelweek is ongeldig" });
+
+    const existing = await findWorkoutForClient(clientId, workoutId);
+    if (!existing) return void res.status(404).json({ error: "Training niet gevonden" });
+
+    const exercises = await db
+      .select()
+      .from(plannedWorkoutExercisesTable)
+      .where(eq(plannedWorkoutExercisesTable.workoutId, existing.id))
+      .orderBy(asc(plannedWorkoutExercisesTable.sortOrder));
+
+    const newWorkoutId = randomId("pw");
+    const [newWorkout] = await db
+      .insert(plannedWorkoutsTable)
+      .values({
+        id: newWorkoutId,
+        clientId,
+        weekNumber: targetWeekNumber,
+        name: targetWeekNumber === existing.weekNumber ? `Kopie van ${existing.name}` : existing.name,
+        dayLabel: existing.dayLabel,
+        sortOrder: existing.sortOrder + 1,
+      })
+      .returning();
+
+    if (exercises.length > 0) {
+      await db.insert(plannedWorkoutExercisesTable).values(
+        exercises.map((ex) => ({
+          id: randomId("pe"),
+          workoutId: newWorkoutId,
+          clientId,
+          weekNumber: targetWeekNumber,
+          exerciseLibraryId: ex.exerciseLibraryId,
+          name: ex.name,
+          videoUrl: ex.videoUrl,
+          imageUrl: ex.imageUrl,
+          notes: ex.notes,
+          sets: ex.sets,
+          repRange: ex.repRange,
+          targetRpe: ex.targetRpe,
+          sortOrder: ex.sortOrder,
+        }))
+      );
+    }
+
+    syncWorkbook(req, clientId, targetWeekNumber);
+    return void res.status(201).json(newWorkout);
+  } catch (err) {
+    req.log.error({ err }, "Failed to copy workout");
+    return void res.status(500).json({ error: "Kopiëren van training mislukt" });
   }
 });
 

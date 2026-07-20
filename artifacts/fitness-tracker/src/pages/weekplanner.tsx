@@ -182,7 +182,12 @@ export default function WeekplannerPage() {
   const uploadInputRef = useRef<HTMLInputElement>(null);
 
   // Previous week comparison
-  const [compareWeekOffset, setCompareWeekOffset] = useState<number | null>(null);
+  const [compareWeekNumber, setCompareWeekNumber] = useState<number | null>(null);
+  const [sideBySide, setSideBySide] = useState<boolean>(true);
+
+  // Copy week dialog state
+  const [copyWeekDialogOpen, setCopyWeekDialogOpen] = useState(false);
+  const [copySourceWeek, setCopySourceWeek] = useState(1);
 
   // ─── Queries ───────────────────────────────────────────────────────────────
 
@@ -267,8 +272,6 @@ export default function WeekplannerPage() {
 
   // ─── Compare week query ────────────────────────────────────────────────────
 
-  const compareWeekNumber = compareWeekOffset !== null ? plannerWeekNumber + compareWeekOffset : null;
-
   const { data: compareWeek } = useQuery<PlannedWeek>({
     queryKey: ["planned-week", compareWeekNumber, activeClientId],
     enabled: !!activeClientId && compareWeekNumber !== null && compareWeekNumber >= 1,
@@ -278,6 +281,14 @@ export default function WeekplannerPage() {
       return res.json();
     },
   });
+
+  const toggleCompare = () => {
+    if (compareWeekNumber !== null) {
+      setCompareWeekNumber(null);
+    } else {
+      setCompareWeekNumber(Math.max(1, plannerWeekNumber - 1));
+    }
+  };
 
   // ─── Mutations ─────────────────────────────────────────────────────────────
 
@@ -307,19 +318,88 @@ export default function WeekplannerPage() {
   });
 
   const copyWeek = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (sourceWeek: number) => {
       setError("");
       const res = await apiFetch(`/api/plans/week/${plannerWeekNumber}/copy`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sourceWeek: Math.max(1, plannerWeekNumber - 1) }),
+        body: JSON.stringify({ sourceWeek }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Week kopieren mislukt");
+      if (!res.ok) throw new Error(data.error || "Week kopiëren mislukt");
+      return data;
+    },
+    onSuccess: () => {
+      setCopyWeekDialogOpen(false);
+      invalidateWeek();
+    },
+    onError: (err) => setError(err instanceof Error ? err.message : "Week kopiëren mislukt"),
+  });
+
+  const copyWorkout = useMutation({
+    mutationFn: async (input: { workoutId: string; targetWeek: number }) => {
+      setError("");
+      const res = await apiFetch(`/api/plans/workouts/${input.workoutId}/copy`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetWeekNumber: input.targetWeek }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Kopiëren van training mislukt");
       return data;
     },
     onSuccess: invalidateWeek,
-    onError: (err) => setError(err instanceof Error ? err.message : "Week kopieren mislukt"),
+    onError: (err) => setError(err instanceof Error ? err.message : "Kopiëren van training mislukt"),
+  });
+
+  const quickAddExercise = useMutation({
+    mutationFn: async (input: { workoutId: string; name: string; libraryId?: string }) => {
+      setError("");
+      const body: any = {
+        name: input.name,
+        sets: "3",
+        repRange: "8-12",
+        targetRpe: "8",
+        addToLibrary: false,
+      };
+      if (input.libraryId) {
+        body.exerciseLibraryId = input.libraryId;
+      }
+      const res = await apiFetch(`/api/plans/workouts/${input.workoutId}/exercises`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Oefening toevoegen mislukt");
+      return data;
+    },
+    onSuccess: invalidateWeek,
+    onError: (err) => setError(err instanceof Error ? err.message : "Oefening toevoegen mislukt"),
+  });
+
+  const addTemplateAsWorkout = useMutation({
+    mutationFn: async (templateId: string) => {
+      setError("");
+      const tpl = templates.find((t) => t.id === templateId);
+      if (!tpl) throw new Error("Template niet gevonden");
+      const order = week?.workouts?.length || 0;
+      const res = await apiFetch(`/api/plans/week/${plannerWeekNumber}/workouts/from-template`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          templateId,
+          name: tpl.name,
+          dayLabel: tpl.name,
+          sortOrder: order,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Template toepassen mislukt");
+      return data;
+    },
+    onSuccess: invalidateWeek,
+    onError: (err) => setError(err instanceof Error ? err.message : "Template toepassen mislukt"),
   });
 
   const addTemplateToWorkout = useMutation({
@@ -680,6 +760,7 @@ export default function WeekplannerPage() {
   const weekOptions = Array.from(
     new Set([...(plannedWeeks?.weekNumbers || []), plannerWeekNumber]),
   ).sort((a, b) => a - b);
+  const sourceWeekOptions = (plannedWeeks?.weekNumbers || []).filter(w => w !== plannerWeekNumber);
 
   return (
     <div className="min-h-[100dvh] w-full bg-background">
@@ -800,12 +881,15 @@ export default function WeekplannerPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => copyWeek.mutate()}
-              disabled={copyWeek.isPending || plannerWeekNumber <= 1}
+              onClick={() => {
+                setCopySourceWeek(Math.max(1, plannerWeekNumber - 1));
+                setCopyWeekDialogOpen(true);
+              }}
+              disabled={copyWeek.isPending}
               className="h-9 font-bold"
             >
               <Copy className="h-4 w-4 mr-1.5" />
-              Week {Math.max(1, plannerWeekNumber - 1)} kopiëren
+              Week kopiëren...
             </Button>
 
             <p className="ml-auto text-xs font-semibold text-muted-foreground">
@@ -911,9 +995,19 @@ export default function WeekplannerPage() {
       <main className="max-w-7xl mx-auto p-4 md:p-6">
         {error && <p className="text-sm font-semibold text-destructive mb-4">{error}</p>}
 
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-          {/* ── Left: workouts ── */}
+        <div className={
+          compareWeekNumber !== null && sideBySide
+            ? "grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_340px] lg:grid-cols-[1fr_1fr] grid-cols-1"
+            : "grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]"
+        }>
+          {/* ── Column 1: active workouts ── */}
           <div className="space-y-4">
+            {compareWeekNumber !== null && sideBySide && (
+              <div className="flex items-center justify-between border-b border-border pb-2">
+                <h2 className="text-lg font-black text-foreground">Week {plannerWeekNumber} (Actief)</h2>
+                <span className="text-xs text-muted-foreground">{week?.workouts?.length || 0} trainingen</span>
+              </div>
+            )}
             {isLoading ? (
               <div className="text-sm text-muted-foreground">Laden...</div>
             ) : week?.workouts?.length ? (
@@ -930,6 +1024,13 @@ export default function WeekplannerPage() {
                   onDeleteWorkout={() => deleteWorkout.mutate(workout)}
                   onSaveTemplate={() => saveTemplate.mutate(workout)}
                   onAddTemplate={() => openWorkoutTemplateDialog(workout)}
+                  onQuickAddExercise={(workoutId, name, libraryId) =>
+                    quickAddExercise.mutate({ workoutId, name, libraryId })
+                  }
+                  library={library}
+                  onDuplicateWorkout={() =>
+                    copyWorkout.mutate({ workoutId: workout.id, targetWeek: plannerWeekNumber })
+                  }
                 />
               ))
             ) : (
@@ -941,86 +1042,124 @@ export default function WeekplannerPage() {
             )}
           </div>
 
-          {/* ── Right sidebar ── */}
-          <aside className="space-y-4">
-            {/* Compare previous week panel */}
+          {/* ── Column 2: reference workouts ── */}
+          {compareWeekNumber !== null && sideBySide && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between border-b border-border pb-2">
+                <h2 className="text-lg font-black text-muted-foreground">Week {compareWeekNumber} (Referentie)</h2>
+                <span className="text-xs text-muted-foreground">{compareWeek?.workouts?.length || 0} trainingen</span>
+              </div>
+              {compareWeek?.workouts?.length ? (
+                compareWeek.workouts.map((workout) => (
+                  <ReferenceWorkoutCard
+                    key={workout.id}
+                    workout={workout}
+                    onCopyWorkout={() => copyWorkout.mutate({ workoutId: workout.id, targetWeek: plannerWeekNumber })}
+                    isCopying={copyWorkout.isPending}
+                  />
+                ))
+              ) : (
+                <div className="border border-dashed border-border rounded-lg p-10 text-center text-sm text-muted-foreground bg-muted/5">
+                  Geen trainingen gevonden voor referentieweek {compareWeekNumber}.
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Column 3: sidebar ── */}
+          <aside className={
+            compareWeekNumber !== null && sideBySide
+              ? "space-y-4 lg:col-span-2 xl:col-span-1"
+              : "space-y-4"
+          }>
+            {/* Compare week panel */}
             <div className="border border-border bg-card rounded-lg p-4">
               <div className="flex items-center justify-between gap-2 mb-3">
                 <div>
                   <h2 className="font-black text-base">Vergelijk week</h2>
-                  <p className="text-xs text-muted-foreground">Bekijk een vorige of volgende week.</p>
+                  <p className="text-xs text-muted-foreground">Bekijk een referentieweek ter vergelijking.</p>
                 </div>
                 <Button
                   size="sm"
-                  variant={compareWeekOffset !== null ? "default" : "outline"}
+                  variant={compareWeekNumber !== null ? "default" : "outline"}
                   className="text-xs font-bold h-8"
-                  onClick={() => setCompareWeekOffset(compareWeekOffset !== null ? null : -1)}
+                  onClick={toggleCompare}
                 >
-                  {compareWeekOffset !== null ? "Sluiten" : "Vergelijk vorige week"}
+                  {compareWeekNumber !== null ? "Sluiten" : "Vergelijk week"}
                 </Button>
               </div>
 
-              {compareWeekOffset !== null && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      disabled={(compareWeekNumber ?? 0) <= 1}
-                      onClick={() => setCompareWeekOffset((o) => (o ?? 0) - 1)}
-                      title="Vorige week"
+              {compareWeekNumber !== null && (
+                <div className="space-y-3 pt-2 border-t border-border">
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs text-muted-foreground whitespace-nowrap">Referentieweek</Label>
+                    <select
+                      value={compareWeekNumber}
+                      onChange={(e) => setCompareWeekNumber(Number(e.target.value))}
+                      className="h-8 flex-1 rounded-md border border-input bg-background px-2 text-xs font-bold"
                     >
-                      <ChevronLeft className="h-4 w-4" />
-                    </Button>
-                    <span className="text-sm font-bold">
-                      Week {compareWeekNumber}
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      disabled={(compareWeekNumber ?? 0) >= plannerWeekNumber - 1}
-                      onClick={() => setCompareWeekOffset((o) => (o ?? 0) + 1)}
-                      title="Volgende week"
-                    >
-                      <ChevronRight className="h-4 w-4" />
-                    </Button>
+                      {Array.from(new Set([...(plannedWeeks?.weekNumbers || []), 1])).sort((a, b) => a - b).map((weekNum) => (
+                        <option key={weekNum} value={weekNum}>
+                          Week {weekNum} {weekNum === plannerWeekNumber ? "(Actief)" : ""}
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
-                  {compareWeek?.workouts?.length ? (
-                    <ul className="space-y-2">
-                      {compareWeek.workouts.map((wo) => (
-                        <li key={wo.id} className="border border-border rounded-md overflow-hidden">
-                          <div className="bg-muted/30 px-3 py-1.5 flex items-center gap-2">
-                            <Dumbbell className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                            <span className="font-bold text-sm truncate">{wo.name}</span>
-                            <span className="ml-auto text-xs text-muted-foreground shrink-0">
-                              {wo.exercises.length} oef.
-                            </span>
-                          </div>
-                          {wo.exercises.length > 0 && (
-                            <ul className="divide-y divide-border">
-                              {[...wo.exercises]
-                                .sort((a, b) => a.sortOrder - b.sortOrder)
-                                .map((ex) => (
-                                  <li key={ex.id} className="px-3 py-1.5 flex items-center justify-between gap-2">
-                                    <span className="text-xs font-semibold truncate">{ex.name}</span>
-                                    <span className="text-xs text-muted-foreground shrink-0 tabular-nums">
-                                      {ex.sets}×{ex.repRange || "—"}
-                                      {ex.targetRpe ? ` @${ex.targetRpe}` : ""}
-                                    </span>
-                                  </li>
-                                ))}
-                            </ul>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-xs text-muted-foreground text-center py-3">
-                      Geen trainingen voor week {compareWeekNumber}.
+                  <div className="flex items-center justify-between gap-2">
+                    <Label htmlFor="sideBySideToggle" className="text-xs text-muted-foreground cursor-pointer select-none">
+                      Side-by-side weergave
+                    </Label>
+                    <input
+                      id="sideBySideToggle"
+                      type="checkbox"
+                      checked={sideBySide}
+                      onChange={(e) => setSideBySide(e.target.checked)}
+                      className="rounded accent-primary h-4 w-4 cursor-pointer"
+                    />
+                  </div>
+
+                  {sideBySide ? (
+                    <p className="text-[11px] text-muted-foreground italic py-1 border-t border-dashed border-border mt-1">
+                      De trainingen van Week {compareWeekNumber} worden hiernaast getoond.
                     </p>
+                  ) : (
+                    <div className="space-y-2 border-t border-dashed border-border pt-2">
+                      {compareWeek?.workouts?.length ? (
+                        <ul className="space-y-2">
+                          {compareWeek.workouts.map((wo) => (
+                            <li key={wo.id} className="border border-border rounded-md overflow-hidden bg-background">
+                              <div className="bg-muted/30 px-3 py-1.5 flex items-center gap-2">
+                                <Dumbbell className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                <span className="font-bold text-sm truncate">{wo.name}</span>
+                                <span className="ml-auto text-xs text-muted-foreground shrink-0">
+                                  {wo.exercises.length} oef.
+                                </span>
+                              </div>
+                              {wo.exercises.length > 0 && (
+                                <ul className="divide-y divide-border">
+                                  {[...wo.exercises]
+                                    .sort((a, b) => a.sortOrder - b.sortOrder)
+                                    .map((ex) => (
+                                      <li key={ex.id} className="px-3 py-1.5 flex items-center justify-between gap-2">
+                                        <span className="text-xs font-semibold truncate">{ex.name}</span>
+                                        <span className="text-xs text-muted-foreground shrink-0 tabular-nums">
+                                          {ex.sets}×{ex.repRange || "—"}
+                                          {ex.targetRpe ? ` @${ex.targetRpe}` : ""}
+                                        </span>
+                                      </li>
+                                    ))}
+                                </ul>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-xs text-muted-foreground text-center py-3">
+                          Geen trainingen voor week {compareWeekNumber}.
+                        </p>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
@@ -1081,6 +1220,16 @@ export default function WeekplannerPage() {
                           {template.exercises.length} oefening{template.exercises.length !== 1 ? "en" : ""}
                         </p>
                       </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 shrink-0 text-primary hover:text-primary hover:bg-primary/10"
+                        title="Toevoegen aan actieve week"
+                        disabled={addTemplateAsWorkout.isPending}
+                        onClick={() => addTemplateAsWorkout.mutate(template.id)}
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -1256,6 +1405,69 @@ export default function WeekplannerPage() {
         </DialogContent>
       </Dialog>
 
+      {/* ── Copy week dialog ── */}
+      <Dialog open={copyWeekDialogOpen} onOpenChange={setCopyWeekDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Week kopiëren</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-muted-foreground">
+              Kopieer alle trainingen van een andere week naar <strong>Week {plannerWeekNumber}</strong>.
+              <br />
+              <span className="text-xs text-amber-500 font-medium">
+                Let op: dit verwijdert geen bestaande trainingen in week {plannerWeekNumber}, maar voegt de gekopieerde trainingen eraan toe.
+              </span>
+            </p>
+
+            <div className="space-y-1.5">
+              <Label>Kopieer vanaf week</Label>
+              {sourceWeekOptions.length > 0 ? (
+                <select
+                  value={copySourceWeek}
+                  onChange={(e) => setCopySourceWeek(Number(e.target.value))}
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm font-bold"
+                >
+                  {sourceWeekOptions.map((weekNum) => (
+                    <option key={weekNum} value={weekNum}>
+                      Week {weekNum} ({plannedWeeks?.weekNumbers?.includes(weekNum) ? "Bevat trainingen" : "Leeg"})
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground italic">
+                    Geen andere weken met trainingen gevonden. Voer handmatig een weeknummer in:
+                  </p>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={copySourceWeek}
+                    onChange={(e) => setCopySourceWeek(Math.max(1, Number(e.target.value)))}
+                    className="h-10 font-bold"
+                  />
+                </div>
+              )}
+            </div>
+
+            {error && <p className="text-sm font-semibold text-destructive">{error}</p>}
+
+            <div className="flex gap-2 justify-end pt-2">
+              <Button variant="outline" onClick={() => setCopyWeekDialogOpen(false)}>
+                Annuleren
+              </Button>
+              <Button
+                onClick={() => copyWeek.mutate(copySourceWeek)}
+                disabled={copyWeek.isPending || copySourceWeek === plannerWeekNumber}
+                className="font-bold"
+              >
+                {copyWeek.isPending ? "Kopiëren..." : "Kopieer Week"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* ── Add template to workout dialog ── */}
       <Dialog open={templateDialogOpen} onOpenChange={setTemplateDialogOpen}>
         <DialogContent className="max-w-lg">
@@ -1408,6 +1620,9 @@ function WorkoutCard({
   onDeleteWorkout,
   onSaveTemplate,
   onAddTemplate,
+  onQuickAddExercise,
+  library,
+  onDuplicateWorkout,
 }: {
   workout: PlannedWorkout;
   onAddExercise: (workout: PlannedWorkout) => void;
@@ -1419,8 +1634,63 @@ function WorkoutCard({
   onDeleteWorkout: () => void;
   onSaveTemplate: () => void;
   onAddTemplate: () => void;
+  onQuickAddExercise: (workoutId: string, name: string, libraryId?: string) => void;
+  library: LibraryExercise[];
+  onDuplicateWorkout: () => void;
 }) {
   const sorted = [...workout.exercises].sort((a, b) => a.sortOrder - b.sortOrder);
+
+  const [quickSearch, setQuickSearch] = useState("");
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const suggestions = useMemo(() => {
+    const q = quickSearch.trim().toLowerCase();
+    if (!q) return [];
+    return library
+      .filter((ex) => ex.name.toLowerCase().includes(q) || (ex.category || "").toLowerCase().includes(q))
+      .slice(0, 5);
+  }, [library, quickSearch]);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setShowSuggestions(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleSelectSuggestion = (name: string, libraryId?: string) => {
+    onQuickAddExercise(workout.id, name, libraryId);
+    setQuickSearch("");
+    setShowSuggestions(false);
+    setHighlightedIndex(-1);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setShowSuggestions(true);
+      setHighlightedIndex((prev) => Math.min(suggestions.length - 1, prev + 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightedIndex((prev) => Math.max(-1, prev - 1));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (highlightedIndex >= 0 && highlightedIndex < suggestions.length) {
+        const selected = suggestions[highlightedIndex];
+        handleSelectSuggestion(selected.name, selected.id);
+      } else if (quickSearch.trim()) {
+        handleSelectSuggestion(quickSearch.trim());
+      }
+    } else if (e.key === "Escape") {
+      setShowSuggestions(false);
+      setHighlightedIndex(-1);
+    }
+  };
 
   return (
     <section className="border border-border bg-card rounded-lg overflow-hidden">
@@ -1441,6 +1711,15 @@ function WorkoutCard({
           />
         </div>
         <div className="flex gap-2 shrink-0">
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-9 w-9"
+            onClick={onDuplicateWorkout}
+            title="Training dupliceren"
+          >
+            <Copy className="h-4 w-4" />
+          </Button>
           <Button
             variant="outline"
             size="icon"
@@ -1482,6 +1761,63 @@ function WorkoutCard({
             Nog geen oefeningen in deze trainingsdag.
           </div>
         )}
+      </div>
+
+      {/* Quick Add Bar */}
+      <div className="px-4 py-2 border-t border-border bg-muted/5 relative" ref={containerRef}>
+        <div className="flex gap-2 items-center">
+          <div className="h-6 w-6 rounded bg-primary/10 flex items-center justify-center shrink-0">
+            <Plus className="h-3.5 w-3.5 text-primary" />
+          </div>
+          <div className="flex-1 relative">
+            <Input
+              value={quickSearch}
+              onChange={(e) => {
+                setQuickSearch(e.target.value);
+                setShowSuggestions(true);
+                setHighlightedIndex(-1);
+              }}
+              onFocus={() => setShowSuggestions(true)}
+              placeholder="Snel oefening toevoegen (zoek of typ naam en druk Enter)..."
+              className="h-8 text-xs w-full bg-background"
+              onKeyDown={handleKeyDown}
+            />
+            {showSuggestions && (quickSearch.trim() || suggestions.length > 0) && (
+              <div className="absolute top-full left-0 right-0 mt-1 bg-popover text-popover-foreground border border-border rounded-md shadow-lg z-20 max-h-60 overflow-y-auto divide-y divide-border">
+                {suggestions.map((item, idx) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => handleSelectSuggestion(item.name, item.id)}
+                    onMouseEnter={() => setHighlightedIndex(idx)}
+                    className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between transition-colors ${
+                      highlightedIndex === idx ? "bg-accent text-accent-foreground font-semibold" : "hover:bg-accent/50"
+                    }`}
+                  >
+                    <span className="truncate">{item.name}</span>
+                    {item.category && (
+                      <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded shrink-0">
+                        {item.category}
+                      </span>
+                    )}
+                  </button>
+                ))}
+                {quickSearch.trim() && (
+                  <button
+                    type="button"
+                    onClick={() => handleSelectSuggestion(quickSearch.trim())}
+                    onMouseEnter={() => setHighlightedIndex(suggestions.length)}
+                    className={`w-full text-left px-3 py-2 text-xs italic text-primary transition-colors ${
+                      highlightedIndex === suggestions.length ? "bg-accent text-accent-foreground font-semibold" : "hover:bg-accent/50"
+                    }`}
+                  >
+                    Voeg toe als losse oefening: "{quickSearch.trim()}"
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       <div className="border-t border-border bg-muted/20 p-3 flex flex-col sm:flex-row gap-2 justify-end">
@@ -1619,8 +1955,65 @@ function InlineExerciseField({
         onBlur={(e) => {
           if (e.currentTarget.value !== defaultValue) onCommit(e.currentTarget.value);
         }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.currentTarget.blur();
+          }
+        }}
         className="h-9 text-sm"
       />
     </label>
+  );
+}
+
+// ─── ReferenceWorkoutCard ────────────────────────────────────────────────────────
+
+function ReferenceWorkoutCard({
+  workout,
+  onCopyWorkout,
+  isCopying,
+}: {
+  workout: PlannedWorkout;
+  onCopyWorkout: () => void;
+  isCopying: boolean;
+}) {
+  const sorted = [...workout.exercises].sort((a, b) => a.sortOrder - b.sortOrder);
+  return (
+    <section className="border border-dashed border-muted-foreground/30 bg-muted/5 rounded-lg overflow-hidden opacity-90 hover:opacity-100 transition-opacity">
+      <div className="p-3 border-b border-border bg-muted/10 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="font-bold text-sm text-muted-foreground truncate">{workout.name}</h3>
+          <p className="text-xs text-muted-foreground/70 truncate">{workout.dayLabel}</p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 text-xs font-bold text-primary border-primary/30 hover:bg-primary/10 shrink-0"
+          onClick={onCopyWorkout}
+          disabled={isCopying}
+        >
+          <Copy className="h-3 w-3 mr-1" />
+          Kopieer training
+        </Button>
+      </div>
+      <div className="divide-y divide-border">
+        {sorted.map((exercise) => (
+          <div key={exercise.id} className="px-3 py-2 flex items-center justify-between gap-2 text-xs">
+            <div className="min-w-0">
+              <p className="font-semibold text-muted-foreground truncate">{exercise.name}</p>
+              {exercise.notes && <p className="text-[10px] text-muted-foreground/60 truncate">{exercise.notes}</p>}
+            </div>
+            <span className="text-muted-foreground/80 shrink-0 font-medium tabular-nums">
+              {exercise.sets}×{exercise.repRange || "—"}{exercise.targetRpe ? ` @${exercise.targetRpe}` : ""}
+            </span>
+          </div>
+        ))}
+        {sorted.length === 0 && (
+          <div className="px-3 py-4 text-xs text-muted-foreground text-center">
+            Geen oefeningen in deze training.
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
