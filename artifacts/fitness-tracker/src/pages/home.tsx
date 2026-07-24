@@ -1,11 +1,11 @@
 import { Link } from "wouter";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useWeek } from "@/components/week-context";
 import { useAuth } from "@/components/auth-context";
 import { useListWeeks } from "@workspace/api-client-react";
 import {
   Dumbbell, Book, MessageSquare, ChevronDown, Settings,
-  AlertCircle, CheckCircle2, FileSpreadsheet, Download, Camera,
+  CheckCircle2, FileSpreadsheet, Download, Camera,
   Clock, ArrowRight, Sparkles
 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -13,23 +13,6 @@ import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/api";
 
 const PHOTO_WEEKS = new Set([1, 4, 7, 10, 13, 16, 20, 23, 26]);
-
-interface DataStatus {
-  source: "excel" | "none";
-  excelFilePresent: boolean;
-  weeksLoaded?: number;
-}
-
-function useDataStatus() {
-  const [status, setStatus] = useState<DataStatus | null>(null);
-  useEffect(() => {
-    apiFetch("/api/data-status")
-      .then((r) => r.json())
-      .then(setStatus)
-      .catch(() => setStatus(null));
-  }, []);
-  return status;
-}
 
 // ─── Status badge component ───────────────────────────────────────────────────
 
@@ -104,7 +87,6 @@ export default function Home() {
   const { selectedWeek, setSelectedWeek } = useWeek();
   const { user } = useAuth();
   const { data: weeks } = useListWeeks();
-  const dataStatus = useDataStatus();
   const [downloading, setDownloading] = useState(false);
 
   const handleDownload = async () => {
@@ -208,26 +190,6 @@ export default function Home() {
           </Button>
         </Link>
       </section>
-
-      {/* Data source banner */}
-      {dataStatus && (
-        <Link href="/instellen" className="w-full">
-          <div className={`w-full rounded-lg px-4 py-2.5 flex items-center gap-2.5 text-sm cursor-pointer transition-opacity hover:opacity-80 ${
-            dataStatus.source === "excel"
-              ? "bg-green-50 border border-green-200 text-green-800 dark:bg-green-950/30 dark:border-green-800 dark:text-green-300"
-              : "bg-amber-50 border border-amber-200 text-amber-800 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-300"
-          }`}>
-            {dataStatus.source === "excel"
-              ? <CheckCircle2 className="h-4 w-4 shrink-0" />
-              : <AlertCircle  className="h-4 w-4 shrink-0" />}
-            <span className="font-medium">
-              {dataStatus.source === "excel"
-                ? `Schema klaar — ${dataStatus.weeksLoaded} weken`
-                : "Geen trainingsschema gekoppeld"}
-            </span>
-          </div>
-        </Link>
-      )}
 
       <div className="w-full flex items-center justify-between">
         <h2 className="text-sm font-black uppercase tracking-wider text-foreground">Vandaag</h2>

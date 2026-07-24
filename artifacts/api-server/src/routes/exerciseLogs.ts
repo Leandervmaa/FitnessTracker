@@ -7,6 +7,7 @@ import { getWorkoutById } from "../services/dataService.js";
 import { writeExerciseLogToSheet } from "../services/sheetsParser.js";
 import { getScopedClientId } from "../lib/auth.js";
 import { getClientLiveSheet } from "../services/clientSheetService.js";
+import { notifyClients } from "./sync.js";
 
 const router = Router();
 
@@ -103,6 +104,7 @@ router.post("/", async (req, res) => {
       req.log.warn({ err: e }, "Failed to write to sheets");
     }
 
+    notifyClients("exercise_updated", { clientId, weekNumber });
     return void res.status(201).json(log);
   } catch (err) {
     req.log.error({ err }, "Failed to create exercise log");
@@ -153,6 +155,7 @@ router.put("/:id", async (req, res) => {
       req.log.warn({ err: e }, "Failed to write to sheets");
     }
 
+    notifyClients("exercise_updated", { clientId, weekNumber: updated.weekNumber });
     return void res.json(updated);
   } catch (err) {
     req.log.error({ err }, "Failed to update exercise log");

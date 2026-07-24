@@ -428,7 +428,7 @@ function WorkoutOverview({
         </div>
       </header>
 
-      <main className="flex-1 p-4 flex flex-col gap-2.5 overflow-y-auto pb-36">
+      <main className="flex-1 p-4 flex flex-col gap-2.5 overflow-y-auto client-deep-end-space">
         <p className="text-sm text-muted-foreground mb-1">
           {workout.exercises.length} oefeningen — tik om direct te beginnen
         </p>
@@ -475,7 +475,7 @@ function WorkoutOverview({
         })}
       </main>
 
-      <div className="fixed bottom-16 left-0 w-full p-4 bg-background border-t border-border z-20 flex justify-center">
+      <div className="fixed client-fixed-action left-0 w-full p-4 bg-background border-t border-border z-20 flex justify-center">
         <div className="w-full max-w-md">
           <Button
             onClick={onStart}
@@ -663,7 +663,7 @@ export default function TrainingDetail() {
   // ── Finished screen ────────────────────────────────────────────────────────
   if (isFinished) {
     return (
-      <div className="min-h-[100dvh] w-full bg-background flex flex-col items-center justify-center p-6 max-w-md mx-auto text-center">
+      <div className="min-h-[100dvh] w-full bg-background flex flex-col items-center justify-center p-6 max-w-md mx-auto text-center client-page-end-space">
         <div className="h-24 w-24 bg-primary/10 rounded-full flex items-center justify-center mb-6">
           <Trophy className="h-12 w-12 text-primary" />
         </div>
@@ -704,6 +704,10 @@ export default function TrainingDetail() {
             queryClient.invalidateQueries({
               queryKey: ["planned-week", workout.weekNumber],
             });
+            queryClient.invalidateQueries({ queryKey: ["weeks"] });
+            queryClient.invalidateQueries({ queryKey: ["current-week"] });
+            queryClient.invalidateQueries({ queryKey: ["/api/weeks"] });
+            queryClient.invalidateQueries({ queryKey: ["/api/weeks/current"] });
             advanceStep();
           },
         }
@@ -738,6 +742,10 @@ export default function TrainingDetail() {
       queryClient.invalidateQueries({
         queryKey: getGetWorkoutsForWeekQueryKey(workout.weekNumber),
       });
+      queryClient.invalidateQueries({ queryKey: ["weeks"] });
+      queryClient.invalidateQueries({ queryKey: ["current-week"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/weeks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/weeks/current"] });
       advanceStep();
     };
 
@@ -851,7 +859,7 @@ export default function TrainingDetail() {
 
         <Progress value={progress} className="h-1 rounded-none bg-secondary" />
 
-        <main className="flex-1 p-6 flex flex-col overflow-y-auto pb-44">
+        <main className="flex-1 p-6 flex flex-col overflow-y-auto client-deep-end-space">
           {/* Exercise image */}
           {imageUrl ? (
             <div className="w-full aspect-video bg-muted rounded-xl mb-6 overflow-hidden border border-border relative">
@@ -953,7 +961,7 @@ export default function TrainingDetail() {
         </main>
 
         {/* ── Bottom bar ── */}
-        <div className="fixed bottom-20 left-0 w-full p-4 bg-background border-t border-border z-20">
+        <div className="fixed client-fixed-action left-0 w-full p-4 bg-background border-t border-border z-20">
           <div className="w-full max-w-md mx-auto flex flex-col gap-2">
             <Button
               onClick={handleNext}

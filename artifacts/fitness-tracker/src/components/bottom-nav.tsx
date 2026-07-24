@@ -3,9 +3,9 @@ import { Dumbbell, UtensilsCrossed, User, BarChart2, MessageSquare } from "lucid
 
 const NAV_ITEMS = [
   { href: "/dagboek",    icon: UtensilsCrossed, label: "Eten"      },
-  { href: "/vergelijk",  icon: BarChart2,       label: "Vergelijk"  },
-  { href: "/trainingen", icon: Dumbbell,        label: "Trainen",   main: true },
   { href: "/feedback",   icon: MessageSquare,   label: "Feedback"  },
+  { href: "/trainingen", icon: Dumbbell,        label: "Trainen",   main: true },
+  { href: "/vergelijk",  icon: BarChart2,       label: "Vergelijk"  },
   { href: "/instellen",  icon: User,            label: "Profiel"    },
 ];
 

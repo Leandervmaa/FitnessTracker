@@ -89,18 +89,37 @@ function usePlannedWeekNumbers() {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function hasExecution(log: SetLog): boolean {
-  return log.reps !== null || !!log.weight;
+  return hasReps(log.reps) || hasWeight(log.weight);
 }
 
 function exerciseWasDone(exercise: Exercise | undefined): boolean {
   return !!exercise?.currentSetLogs?.some(hasExecution);
 }
 
-function formatNumber(value: string | number | null | undefined): string {
-  if (value === null || value === undefined || value === "") return "?";
+function hasReps(value: number | null | undefined): boolean {
+  return value !== null && value !== undefined && Number.isFinite(Number(value));
+}
+
+function hasWeight(value: string | null | undefined): boolean {
+  if (value === null || value === undefined) return false;
+  const normalized = String(value).trim().toLowerCase();
+  return normalized !== "" && normalized !== "null" && normalized !== "undefined";
+}
+
+function formatNumber(value: string | number): string {
   const numberValue = Number(value);
   if (!Number.isFinite(numberValue)) return String(value);
   return Number.isInteger(numberValue) ? String(numberValue) : String(numberValue).replace(/\.0+$/, "");
+}
+
+function formatSetLine(log: SetLog): string | null {
+  const reps = hasReps(log.reps) ? formatNumber(log.reps!) : "";
+  const weight = hasWeight(log.weight) ? formatNumber(log.weight!.trim()) : "";
+
+  if (reps && weight) return `${reps} x ${weight}`;
+  if (reps) return `${reps} reps`;
+  if (weight) return `${weight} kg`;
+  return null;
 }
 
 function setLines(exercise: Exercise | undefined): string[] {
@@ -108,7 +127,8 @@ function setLines(exercise: Exercise | undefined): string[] {
   return [...(exercise?.currentSetLogs || [])]
     .filter(hasExecution)
     .sort((a, b) => a.setNumber - b.setNumber)
-    .map((log) => `${formatNumber(log.reps)} x ${formatNumber(log.weight)}`);
+    .map(formatSetLine)
+    .filter((line): line is string => !!line);
 }
 
 function findExerciseInWeek(plan: Workout[], workoutName: string, exerciseName: string): Exercise | undefined {
@@ -243,7 +263,7 @@ export default function VergelijkPage() {
         </div>
       )}
 
-      <div className="w-full p-4 flex flex-col gap-5">
+      <div className="w-full p-4 flex flex-col gap-5 client-page-end-space">
         {isLoading && (
           <div className="flex items-center justify-center py-16">
             <div className="w-8 h-8 rounded-full border-4 border-primary border-t-transparent animate-spin" />

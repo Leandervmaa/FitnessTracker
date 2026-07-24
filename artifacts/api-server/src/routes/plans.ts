@@ -19,6 +19,7 @@ import {
   syncClientWorkbook,
   writePlannedSetLogToSheet,
 } from "../services/planningSheetService.js";
+import { notifyClients } from "./sync.js";
 
 const router = Router();
 const DAILY_TARGET_LABEL = "Dagelijks";
@@ -597,6 +598,8 @@ router.post("/set-logs", async (req, res) => {
       req.log.warn({ err, clientId }, "Failed to sync set log to sheet");
     });
 
+    notifyClients("exercise_updated", { clientId, weekNumber: workout.weekNumber });
+
     return void res.status(existing ? 200 : 201).json(log);
   } catch (err) {
     req.log.error({ err }, "Failed to save set log");
@@ -1116,4 +1119,3 @@ router.post("/week/:weekNumber/bulk-adjust", requireTrainer, async (req, res) =>
 });
 
 export default router;
-

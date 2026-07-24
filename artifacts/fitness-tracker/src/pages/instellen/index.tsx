@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useLocation } from "wouter";
 import { ChevronLeft, Upload, CheckCircle2, XCircle, FileSpreadsheet, Trash2, RefreshCw, Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,10 @@ interface DataStatus {
   excelFilePresent: boolean;
   sheetNames?: string[];
   weeksLoaded?: number;
+  plannedWeekNumbers?: number[];
+  plannedWeekCount?: number;
+  firstPlannedWeek?: number | null;
+  lastPlannedWeek?: number | null;
   parsedAt?: string;
   uploadInstructies?: {
     stap1: string;
@@ -50,9 +54,19 @@ export default function Instellen() {
   const [downloading, setDownloading] = useState(false);
   const { status, loading, refresh } = useDataStatus();
   const isTrainer = user?.role === "trainer";
+  const plannedWeekCount = status?.plannedWeekCount ?? 0;
+  const hasTrajectory = plannedWeekCount > 0;
+  const firstPlannedWeek = status?.firstPlannedWeek ?? null;
+  const lastPlannedWeek = status?.lastPlannedWeek ?? null;
+  const trajectoryRange = hasTrajectory
+    ? firstPlannedWeek === lastPlannedWeek
+      ? `Week ${firstPlannedWeek}`
+      : `Week ${firstPlannedWeek} t/m ${lastPlannedWeek}`
+    : "Nog geen weken toegevoegd";
 
-  // Load on mount
-  useState(() => { refresh(); });
+  useEffect(() => {
+    void refresh();
+  }, []);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -164,30 +178,35 @@ export default function Instellen() {
         )}
       </header>
 
-      <div className="w-full p-5 flex flex-col gap-5">
+      <div className="w-full p-5 flex flex-col gap-5 client-page-end-space">
 
         {/* Verbindingsstatus kaart */}
         {isTrainer && <div className={`rounded-xl border p-5 flex items-start gap-4 ${
-          status?.source === "excel"
+          hasTrajectory
             ? "bg-green-50 border-green-200 dark:bg-green-950/30 dark:border-green-800"
             : "bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800"
         }`}>
-          {status?.source === "excel" ? (
+          {hasTrajectory ? (
             <CheckCircle2 className="h-6 w-6 text-green-600 dark:text-green-400 mt-0.5 shrink-0" />
           ) : (
             <XCircle className="h-6 w-6 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
           )}
           <div className="flex-1 min-w-0">
-            <p className={`font-bold text-base ${status?.source === "excel" ? "text-green-800 dark:text-green-300" : "text-amber-800 dark:text-amber-300"}`}>
-              {status?.source === "excel" ? "Excel-data actief" : "Geen trainingsschema gekoppeld"}
+            <p className={`font-bold text-base ${hasTrajectory ? "text-green-800 dark:text-green-300" : "text-amber-800 dark:text-amber-300"}`}>
+              {plannedWeekCount === 1 ? "1 week in traject" : `${plannedWeekCount} weken in traject`}
             </p>
-            {status?.source === "excel" ? (
+            {hasTrajectory ? (
               <div className="mt-1 space-y-0.5">
-                <p className="text-sm text-green-700 dark:text-green-400">{status.weeksLoaded} weken geladen</p>
-                <p className="text-xs text-green-600/70 dark:text-green-500/70 truncate">
-                  Tabbladen: {status.sheetNames?.join(", ")}
+                <p className="text-sm text-green-700 dark:text-green-400">{trajectoryRange} beschikbaar in de app</p>
+                <p className="text-xs text-green-600/70 dark:text-green-500/70">
+                  {status?.source === "excel" ? "Excel-bestand aanwezig" : "Trajectdata staat in de app-database"}
                 </p>
-                {status.parsedAt && (
+                {!!status?.sheetNames?.length && (
+                  <p className="text-xs text-green-600/70 dark:text-green-500/70 truncate">
+                    Tabbladen: {status.sheetNames.join(", ")}
+                  </p>
+                )}
+                {status?.parsedAt && (
                   <p className="text-xs text-green-600/70 dark:text-green-500/70">
                     Geladen: {new Date(status.parsedAt).toLocaleString("nl-NL")}
                   </p>
@@ -195,7 +214,7 @@ export default function Instellen() {
               </div>
             ) : (
               <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">
-                Upload of koppel een bestand om trainingsdata te tonen.
+                Voeg een week toe in de weekplanner of importeer een bestand om het traject te vullen.
               </p>
             )}
           </div>

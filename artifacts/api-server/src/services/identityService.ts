@@ -208,9 +208,23 @@ export async function ensureIdentitySchema(): Promise<void> {
     )
   `);
 
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS trainer_feedback (
+      id serial PRIMARY KEY,
+      client_id text NOT NULL,
+      week_number integer NOT NULL,
+      title text NOT NULL,
+      body text,
+      video_url text,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+
   await db.execute(sql`CREATE INDEX IF NOT EXISTS planned_workouts_client_week_idx ON planned_workouts (client_id, week_number)`);
   await db.execute(sql`CREATE INDEX IF NOT EXISTS planned_exercises_workout_idx ON planned_workout_exercises (workout_id)`);
   await db.execute(sql`CREATE INDEX IF NOT EXISTS set_logs_client_exercise_idx ON exercise_set_logs (client_id, exercise_library_id, completed_at)`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS trainer_feedback_client_week_idx ON trainer_feedback (client_id, week_number)`);
 
   for (const table of ["exercise_logs", "nutrition_entries", "feedback_answers", "progress_photos", "food_logs"]) {
     await db.execute(sql.raw(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS client_id text`));

@@ -3,13 +3,18 @@ import { Link, useLocation } from "wouter";
 import { ChevronLeft, FileSpreadsheet, Loader2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/api";
+import { useAuth } from "@/components/auth-context";
 
 export default function ExcelViewer() {
   const [, setLocation] = useLocation();
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [excelData, setExcelData] = useState<Record<string, string[][]> | null>(null);
   const [activeSheet, setActiveSheet] = useState<string>("");
+  const isTrainer = user?.role === "trainer";
+  const pageWidthClass = isTrainer ? "max-w-7xl" : "max-w-md";
+  const endSpaceClass = isTrainer ? "trainer-page-end-space" : "client-page-end-space";
 
   useEffect(() => {
     apiFetch("/api/upload/excel/json")
@@ -36,18 +41,20 @@ export default function ExcelViewer() {
   }, []);
 
   return (
-    <div className="min-h-[100dvh] w-full bg-background flex flex-col items-center max-w-md mx-auto">
-      <header className="w-full p-4 flex items-center border-b border-border sticky top-0 bg-background/80 backdrop-blur-md z-10">
-        <Button variant="ghost" size="icon" onClick={() => setLocation("/")} className="mr-2">
-          <ChevronLeft className="h-6 w-6" />
-        </Button>
-        <div className="flex-1 flex items-center">
-          <FileSpreadsheet className="w-5 h-5 text-green-600 dark:text-green-400 mr-2" />
-          <h1 className="text-xl font-bold text-foreground">Excel Schema</h1>
+    <div className="min-h-[100dvh] w-full bg-background flex flex-col items-center">
+      <header className="w-full border-b border-border sticky top-0 bg-background/80 backdrop-blur-md z-10">
+        <div className={`w-full ${pageWidthClass} mx-auto p-4 flex items-center`}>
+          <Button variant="ghost" size="icon" onClick={() => setLocation(isTrainer ? "/trainer" : "/")} className="mr-2">
+            <ChevronLeft className="h-6 w-6" />
+          </Button>
+          <div className="flex-1 flex items-center min-w-0">
+            <FileSpreadsheet className="w-5 h-5 text-green-600 dark:text-green-400 mr-2 shrink-0" />
+            <h1 className="text-xl font-bold text-foreground truncate">Excel Schema</h1>
+          </div>
         </div>
       </header>
 
-      <div className="w-full flex-1 flex flex-col p-4 overflow-hidden">
+      <div className={`w-full ${pageWidthClass} flex-1 flex flex-col p-4 md:p-6 min-h-0 ${endSpaceClass}`}>
         {loading && (
           <div className="flex-1 flex flex-col items-center justify-center py-12">
             <Loader2 className="h-8 w-8 animate-spin text-primary mb-2" />
@@ -67,9 +74,9 @@ export default function ExcelViewer() {
         )}
 
         {excelData && activeSheet && (
-          <div className="w-full flex-1 flex flex-col overflow-hidden">
+          <div className="w-full flex-1 flex flex-col min-h-0">
             {/* Sheet Tabs */}
-            <div className="w-full overflow-x-auto pb-2 flex gap-1 mb-4 border-b border-border">
+            <div className="w-full scroll-x-safe pb-2 flex gap-1 mb-4 border-b border-border">
               {Object.keys(excelData).map((sheetName) => (
                 <button
                   key={sheetName}
@@ -86,8 +93,8 @@ export default function ExcelViewer() {
             </div>
 
             {/* Sheet Table Viewer */}
-            <div className="flex-1 w-full border border-border rounded-xl bg-card overflow-auto shadow-sm">
-              <table className="w-full border-collapse text-[10px] sm:text-xs">
+            <div className="flex-1 w-full min-h-[60dvh] border border-border rounded-xl bg-card overflow-auto shadow-sm">
+              <table className="min-w-full border-collapse text-[10px] sm:text-xs">
                 <tbody>
                   {excelData[activeSheet].map((row, ri) => {
                     // Check if it's an empty row to apply styling

@@ -5,19 +5,23 @@ import {
   CalendarDays,
   FileSpreadsheet,
   LogOut,
+  MessageSquare,
   PanelLeftClose,
   PanelLeftOpen,
   Users,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAuth } from "@/components/auth-context";
 import { useClient } from "@/components/client-context";
+import { apiFetch } from "@/lib/api";
 
 const trainerItems = [
   { href: "/trainer", label: "Klanten", icon: Users, needsClient: false },
   { href: "/weekplanner", label: "Weekplanner", icon: CalendarDays, needsClient: true },
   { href: "/bibliotheek", label: "Bibliotheek", icon: BookOpen, needsClient: false },
+  { href: "/trainer-feedback", label: "Feedback", icon: MessageSquare, needsClient: true },
   { href: "/vergelijk", label: "Voortgang", icon: BarChart2, needsClient: true },
   { href: "/excel-viewer", label: "Sheet bekijken", icon: FileSpreadsheet, needsClient: true },
 ];
@@ -27,10 +31,27 @@ type TrainerDesktopNavProps = {
   onCollapsedChange: (collapsed: boolean) => void;
 };
 
+type TrainerClientSummary = {
+  id: string;
+  name: string;
+};
+
 export function TrainerDesktopNav({ collapsed, onCollapsedChange }: TrainerDesktopNavProps) {
   const [location] = useLocation();
   const { user, logout } = useAuth();
   const { activeClientId } = useClient();
+  const { data: clients = [] } = useQuery<TrainerClientSummary[]>({
+    queryKey: ["trainer-nav-clients"],
+    enabled: user?.role === "trainer",
+    queryFn: async () => {
+      const res = await apiFetch("/api/clients");
+      if (!res.ok) return [];
+      return res.json();
+    },
+    staleTime: 30_000,
+  });
+
+  const activeClientName = clients.find((client) => client.id === activeClientId)?.name;
 
   if (user?.role !== "trainer") return null;
 
@@ -40,9 +61,16 @@ export function TrainerDesktopNav({ collapsed, onCollapsedChange }: TrainerDeskt
   return (
     <aside className={`hidden lg:flex fixed inset-y-0 left-0 z-40 ${widthClass} border-r border-border bg-background/95 backdrop-blur-md flex-col transition-[width] duration-200 ease-out`}>
       <div className={`border-b border-border p-3 ${collapsed ? "flex flex-col items-center gap-3" : "flex items-center justify-between gap-3"}`}>
-        <div className="h-11 w-11 rounded-lg border border-border bg-card flex items-center justify-center shadow-sm shrink-0">
-          <img src="/images/logo.png" alt="Bodyrebuild" className="h-6 w-6 object-contain" />
-        </div>
+        {collapsed ? (
+          <div className="h-11 w-11 rounded-lg border border-border bg-card flex items-center justify-center shadow-sm shrink-0">
+            <img src="/images/logo.png" alt="Bodyrebuild" className="h-6 w-6 object-contain" />
+          </div>
+        ) : (
+          <div className="min-w-0">
+            <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Coachomgeving</p>
+            <p className="text-base font-black text-foreground truncate">Bodyrebuild</p>
+          </div>
+        )}
 
         <Button
           variant="ghost"
@@ -101,7 +129,7 @@ export function TrainerDesktopNav({ collapsed, onCollapsedChange }: TrainerDeskt
                 </div>
               </TooltipTrigger>
               <TooltipContent side="right">
-                {activeClientId ? "Klant geselecteerd" : "Geen klant geselecteerd"}
+                {activeClientName || (activeClientId ? "Klant geselecteerd" : "Geen klant geselecteerd")}
               </TooltipContent>
             </Tooltip>
             <Tooltip>
@@ -120,7 +148,7 @@ export function TrainerDesktopNav({ collapsed, onCollapsedChange }: TrainerDeskt
                 {activeClientId ? "Klant geselecteerd" : "Geen klant geselecteerd"}
               </p>
               <p className="text-sm font-bold text-foreground truncate">
-                {activeClientId ? "Klant geselecteerd" : "Kies een klant"}
+                {activeClientName || (activeClientId ? "Klant laden..." : "Kies een klant")}
               </p>
             </div>
             <Button variant="ghost" onClick={logout} className="w-full justify-start font-bold text-muted-foreground">

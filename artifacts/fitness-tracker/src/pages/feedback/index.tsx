@@ -7,17 +7,27 @@ import {
   useSaveFeedbackAnswer,
   getGetFeedbackAnswersQueryKey
 } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { ChevronLeft, MessageSquare, ArrowRight, Check, Eye, PenLine, PlayCircle } from "lucide-react";
+import { ChevronLeft, MessageSquare, ArrowRight, Check, Eye, PenLine, PlayCircle, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import { apiFetch } from "@/lib/api";
+import { getVideoHostLabel, VideoThumbnail } from "@/components/video-thumbnail";
 
 type FeedbackMode = "menu" | "view" | "answer";
 
-const TRAINER_FEEDBACK_VIDEOS: { title: string; url: string; description?: string }[] = [];
+type TrainerFeedback = {
+  id: number;
+  weekNumber: number;
+  title: string;
+  body: string;
+  videoUrl: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
 
 export default function FeedbackList() {
   const { selectedWeek } = useWeek();
@@ -34,11 +44,22 @@ export default function FeedbackList() {
     { weekNumber: selectedWeek || 0 },
     { query: { queryKey: getGetFeedbackAnswersQueryKey({ weekNumber: selectedWeek || 0 }), enabled: !!selectedWeek && mode === "answer" } }
   );
+  const { data: trainerFeedback = [], isLoading: trainerFeedbackLoading } = useQuery<TrainerFeedback[]>({
+    queryKey: ["trainer-feedback"],
+    enabled: mode === "view",
+    queryFn: async () => {
+      const res = await apiFetch("/api/feedback/trainer");
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
 
   const saveAnswer = useSaveFeedbackAnswer();
 
   const currentQuestion = questions?.[currentStep];
   const existingAnswer = answers?.find(a => a.questionId === currentQuestion?.id);
+  const selectedWeekFeedback = trainerFeedback.filter((item) => item.weekNumber === selectedWeek);
+  const otherTrainerFeedback = trainerFeedback.filter((item) => item.weekNumber !== selectedWeek);
 
   useEffect(() => {
     if (existingAnswer) {
@@ -61,7 +82,7 @@ export default function FeedbackList() {
           <WeekSelector />
         </header>
 
-        <main className="w-full p-6 flex flex-col gap-4 pb-24">
+        <main className="w-full p-6 flex flex-col gap-4 client-page-end-space">
           <Button
             variant="outline"
             onClick={() => setMode("view")}
@@ -110,29 +131,37 @@ export default function FeedbackList() {
           <WeekSelector />
         </header>
 
-        <main className="w-full p-6 flex flex-col gap-3 pb-24">
-          {TRAINER_FEEDBACK_VIDEOS.length > 0 ? (
-            TRAINER_FEEDBACK_VIDEOS.map((video) => (
-              <a
-                key={video.url}
-                href={video.url}
-                target="_blank"
-                rel="noreferrer"
-                className="bg-card border border-border rounded-xl p-4 shadow-sm flex items-center gap-3"
-              >
-                <span className="h-10 w-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                  <PlayCircle className="h-5 w-5" />
-                </span>
-                <span className="min-w-0">
-                  <span className="block font-bold text-foreground truncate">{video.title}</span>
-                  {video.description && <span className="block text-sm text-muted-foreground">{video.description}</span>}
-                </span>
-              </a>
-            ))
+        <main className="w-full p-6 flex flex-col gap-3 client-page-end-space">
+          {trainerFeedbackLoading ? (
+            <Skeleton className="h-40 w-full rounded-xl" />
+          ) : trainerFeedback.length > 0 ? (
+            <>
+              {selectedWeekFeedback.length > 0 && (
+                <section className="space-y-3">
+                  <div>
+                    <p className="text-[11px] font-black uppercase tracking-wider text-primary">Deze week</p>
+                    <h2 className="text-lg font-black text-foreground">Feedback voor week {selectedWeek}</h2>
+                  </div>
+                  {selectedWeekFeedback.map((item) => <TrainerFeedbackCard key={item.id} item={item} />)}
+                </section>
+              )}
+
+              {(selectedWeekFeedback.length === 0 || otherTrainerFeedback.length > 0) && (
+                <section className="space-y-3">
+                  <div>
+                    <p className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">Alle feedback</p>
+                    <h2 className="text-lg font-black text-foreground">Berichten van je trainer</h2>
+                  </div>
+                  {(selectedWeekFeedback.length > 0 ? otherTrainerFeedback : trainerFeedback).map((item) => (
+                    <TrainerFeedbackCard key={item.id} item={item} />
+                  ))}
+                </section>
+              )}
+            </>
           ) : (
             <div className="bg-card border border-border rounded-xl p-6 shadow-sm text-center">
               <PlayCircle className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-              <p className="font-bold text-foreground">Nog geen video's beschikbaar</p>
+              <p className="font-bold text-foreground">Nog geen feedback van je trainer</p>
             </div>
           )}
         </main>
@@ -154,7 +183,7 @@ export default function FeedbackList() {
           <h1 className="text-xl font-bold text-foreground flex-1">Feedback achterlaten</h1>
           <WeekSelector />
         </header>
-        <main className="w-full p-6 pb-24">
+        <main className="w-full p-6 client-page-end-space">
           <div className="bg-card border border-border rounded-xl p-6 shadow-sm text-center">
             <MessageSquare className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
             <p className="font-bold text-foreground">Geen vragen beschikbaar</p>
@@ -166,7 +195,7 @@ export default function FeedbackList() {
 
   if (isFinished) {
     return (
-      <div className="min-h-[100dvh] w-full bg-background flex flex-col items-center justify-center p-6 max-w-md mx-auto text-center">
+      <div className="min-h-[100dvh] w-full bg-background flex flex-col items-center justify-center p-6 max-w-md mx-auto text-center client-page-end-space">
         <div className="h-24 w-24 bg-primary/10 rounded-full flex items-center justify-center mb-6">
           <MessageSquare className="h-12 w-12 text-primary" />
         </div>
@@ -191,6 +220,10 @@ export default function FeedbackList() {
     }, {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getGetFeedbackAnswersQueryKey({ weekNumber: selectedWeek }) });
+        queryClient.invalidateQueries({ queryKey: ["weeks"] });
+        queryClient.invalidateQueries({ queryKey: ["current-week"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/weeks"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/weeks/current"] });
         
         if (currentStep < questions.length - 1) {
           setCurrentStep(prev => prev + 1);
@@ -218,7 +251,7 @@ export default function FeedbackList() {
 
       <Progress value={progress} className="h-1 w-full rounded-none bg-secondary" />
 
-      <main className="w-full p-6 flex flex-col flex-1 pb-44">
+      <main className="w-full p-6 flex flex-col flex-1 client-deep-end-space">
         <div className="bg-card border border-border rounded-xl p-6 shadow-sm flex-1 flex flex-col">
           <h2 className="text-2xl font-bold text-foreground mb-6 leading-tight">
             {currentQuestion?.question}
@@ -234,7 +267,7 @@ export default function FeedbackList() {
         </div>
       </main>
 
-      <div className="fixed bottom-20 left-0 w-full p-4 bg-background border-t border-border z-20 flex justify-center">
+      <div className="fixed client-fixed-action left-0 w-full p-4 bg-background border-t border-border z-20 flex justify-center">
         <div className="w-full max-w-md">
           <Button 
             onClick={handleNext} 
@@ -252,5 +285,37 @@ export default function FeedbackList() {
         </div>
       </div>
     </div>
+  );
+}
+
+function TrainerFeedbackCard({ item }: { item: TrainerFeedback }) {
+  const hasVideo = !!item.videoUrl;
+
+  return (
+    <article className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+      {hasVideo && (
+        <a href={item.videoUrl!} target="_blank" rel="noreferrer" className="block">
+          <VideoThumbnail videoUrl={item.videoUrl} title={item.title} className="rounded-none border-0 border-b" />
+        </a>
+      )}
+      <div className="space-y-3 p-4">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-wider text-primary">Week {item.weekNumber}</p>
+          <h3 className="mt-1 text-base font-black text-foreground">{item.title}</h3>
+        </div>
+        {item.body && <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">{item.body}</p>}
+        {hasVideo && (
+          <a
+            href={item.videoUrl!}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center text-sm font-black text-primary"
+          >
+            Bekijk op {getVideoHostLabel(item.videoUrl)}
+            <ExternalLink className="ml-1.5 h-4 w-4" />
+          </a>
+        )}
+      </div>
+    </article>
   );
 }

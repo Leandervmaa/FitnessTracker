@@ -281,7 +281,7 @@ export default function BibliotheekPage() {
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto p-4 md:p-6 space-y-4">
+      <main className="max-w-6xl mx-auto p-4 md:p-6 space-y-4 trainer-page-end-space">
         <div className="flex gap-2">
           <Button variant={tab === "exercises" ? "default" : "outline"} onClick={() => setTab("exercises")} className="font-bold">
             Oefeningen

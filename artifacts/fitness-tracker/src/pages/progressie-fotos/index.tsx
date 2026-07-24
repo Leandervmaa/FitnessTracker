@@ -138,7 +138,13 @@ function useUploadPhoto() {
       if (!res.ok) throw new Error((await res.json()).error || "Upload mislukt");
       return res.json() as Promise<Photo>;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["progress-photos"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["progress-photos"] });
+      qc.invalidateQueries({ queryKey: ["weeks"] });
+      qc.invalidateQueries({ queryKey: ["current-week"] });
+      qc.invalidateQueries({ queryKey: ["/api/weeks"] });
+      qc.invalidateQueries({ queryKey: ["/api/weeks/current"] });
+    },
   });
 }
 
@@ -149,7 +155,13 @@ function useDeletePhoto() {
       const res = await apiFetch(`/api/progress-photos/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Verwijderen mislukt");
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["progress-photos"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["progress-photos"] });
+      qc.invalidateQueries({ queryKey: ["weeks"] });
+      qc.invalidateQueries({ queryKey: ["current-week"] });
+      qc.invalidateQueries({ queryKey: ["/api/weeks"] });
+      qc.invalidateQueries({ queryKey: ["/api/weeks/current"] });
+    },
   });
 }
 
@@ -219,7 +231,7 @@ function ListView({ photos }: { photos: Photo[] }) {
   for (const p of photos) photoMap.set(`${p.weekNumber}-${p.angle}`, p);
 
   return (
-    <div className="w-full p-4 space-y-4">
+    <div className="w-full p-4 space-y-4 client-page-end-space">
 
       {/* Tips banner */}
       <div className="bg-amber-500/10 border border-amber-500/25 rounded-xl p-4">
@@ -398,7 +410,7 @@ function CompareView({ photos, weekA, weekB, onChangeA, onChangeB }: {
   const high = Math.max(weekA, weekB);
 
   return (
-    <div className="w-full flex flex-col p-4 gap-4">
+    <div className="w-full flex flex-col p-4 gap-4 client-page-end-space">
       {/* Week selectors */}
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">

@@ -8,11 +8,12 @@
  *
  * Event → Query keys mapping:
  *   photos_updated    → ["progress-photos", *]
- *   food_logs_updated → ["food-logs", *]
- *   nutrition_updated → ["nutrition", *]
- *   exercise_updated  → ["exercise-logs", *], ["week-workouts", *]
- *   feedback_updated  → ["feedback", *]
- *   weeks_updated     → ["weeks"]
+ *   food_logs_updated → ["food-logs", *], week status
+ *   nutrition_updated → ["nutrition", *], week status
+ *   exercise_updated  → ["exercise-logs", *], ["week-workouts", *], week status
+ *   feedback_updated  → ["feedback", *], week status
+ *   trainer_feedback_updated → ["trainer-feedback", *]
+ *   weeks_updated     → week status
  */
 
 import { useEffect, useRef } from "react";
@@ -20,12 +21,13 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useClient } from "@/components/client-context";
 
 const EVENT_TO_QUERY_KEYS: Record<string, string[][]> = {
-  photos_updated:    [["progress-photos"]],
-  food_logs_updated: [["food-logs"]],
-  nutrition_updated: [["nutrition"], ["weeks"]],
-  exercise_updated:  [["exercise-logs"], ["week-workouts"], ["weeks"]],
-  feedback_updated:  [["feedback"], ["weeks"]],
-  weeks_updated:     [["weeks"]],
+  photos_updated:    [["progress-photos"], ["weeks"], ["current-week"], ["/api/weeks"], ["/api/weeks/current"]],
+  food_logs_updated: [["food-logs"], ["weeks"], ["current-week"], ["/api/weeks"], ["/api/weeks/current"]],
+  nutrition_updated: [["nutrition"], ["weeks"], ["current-week"], ["/api/weeks"], ["/api/weeks/current"]],
+  exercise_updated:  [["exercise-logs"], ["week-workouts"], ["weeks"], ["current-week"], ["/api/weeks"], ["/api/weeks/current"]],
+  feedback_updated:  [["feedback"], ["weeks"], ["current-week"], ["/api/weeks"], ["/api/weeks/current"]],
+  trainer_feedback_updated: [["trainer-feedback"]],
+  weeks_updated:     [["weeks"], ["current-week"], ["/api/weeks"], ["/api/weeks/current"]],
 };
 
 export function useRealtimeSync() {

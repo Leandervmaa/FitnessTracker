@@ -17,6 +17,7 @@ import LoginPage from "@/pages/login";
 import TrainerDashboard from "@/pages/trainer-dashboard";
 import BibliotheekPage from "@/pages/bibliotheek";
 import WeekplannerPage from "@/pages/weekplanner";
+import TrainerFeedbackPage from "@/pages/trainer-feedback";
 import TrainingList from "@/pages/trainingen/index";
 import TrainingDetail from "@/pages/trainingen/detail";
 import NutritionList from "@/pages/dagboek/index";
@@ -59,6 +60,7 @@ function Router() {
       <Route path="/trainer" component={TrainerRoute} />
       <Route path="/bibliotheek" component={TrainerLibraryRoute} />
       <Route path="/weekplanner" component={TrainerPlannerRoute} />
+      <Route path="/trainer-feedback" component={TrainerFeedbackRoute} />
       <Route path="/trainingen" component={ClientTrainingListRoute} />
       <Route path="/trainingen/:workoutId" component={ClientTrainingDetailRoute} />
       <Route path="/dagboek" component={ClientNutritionRoute} />
@@ -90,6 +92,12 @@ function TrainerPlannerRoute() {
   const { user } = useAuth();
   if (user?.role !== "trainer") return <Home />;
   return <WeekplannerPage />;
+}
+
+function TrainerFeedbackRoute() {
+  const { user } = useAuth();
+  if (user?.role !== "trainer") return <Home />;
+  return <TrainerFeedbackPage />;
 }
 
 function ClientTrainingListRoute() {
@@ -171,9 +179,9 @@ function AuthShell() {
   if (!user) return <LoginPage />;
 
   return (
-    <ClientProvider>
-      <WeekProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+    <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+      <ClientProvider>
+        <WeekProvider>
           <RealtimeSyncBridge />
           <TrainerDesktopNav collapsed={trainerNavCollapsed} onCollapsedChange={updateTrainerNavCollapsed} />
           <div className={isTrainer ? `${trainerNavCollapsed ? "lg:pl-20" : "lg:pl-64"} min-h-[100dvh] transition-[padding] duration-200 ease-out` : ""}>
@@ -181,9 +189,9 @@ function AuthShell() {
             <Router />
           </div>
           <ClientBottomNav />
-        </WouterRouter>
-      </WeekProvider>
-    </ClientProvider>
+        </WeekProvider>
+      </ClientProvider>
+    </WouterRouter>
   );
 }
 

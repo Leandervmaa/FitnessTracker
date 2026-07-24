@@ -79,7 +79,13 @@ function useDeleteFoodLog() {
       const res = await apiFetch(`/api/food/logs/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Verwijderen mislukt");
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["food-logs"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["food-logs"] });
+      qc.invalidateQueries({ queryKey: ["weeks"] });
+      qc.invalidateQueries({ queryKey: ["current-week"] });
+      qc.invalidateQueries({ queryKey: ["/api/weeks"] });
+      qc.invalidateQueries({ queryKey: ["/api/weeks/current"] });
+    },
   });
 }
 
@@ -95,7 +101,13 @@ function useAddFoodLog() {
       if (!res.ok) throw new Error((await res.json()).error || "Opslaan mislukt");
       return res.json();
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["food-logs"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["food-logs"] });
+      qc.invalidateQueries({ queryKey: ["weeks"] });
+      qc.invalidateQueries({ queryKey: ["current-week"] });
+      qc.invalidateQueries({ queryKey: ["/api/weeks"] });
+      qc.invalidateQueries({ queryKey: ["/api/weeks/current"] });
+    },
   });
 }
 
@@ -210,7 +222,7 @@ function AddFoodPanel({ weekNumber, day, dayLabel, initialFoodId, onClose }: Add
         </div>
 
         {foodDetail && !loadingDetail && (
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 client-page-end-space">
             {/* Serving selector */}
             <div className="space-y-1.5">
               <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Portiegrootte</Label>
@@ -308,7 +320,7 @@ function AddFoodPanel({ weekNumber, day, dayLabel, initialFoodId, onClose }: Add
       </div>
 
       {/* Results */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto client-page-end-space">
         {searchError && (
           <div className="flex items-start gap-2 m-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 rounded-lg p-3 text-xs text-amber-800 dark:text-amber-300">
             <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
@@ -432,7 +444,7 @@ export default function FoodTracker({ weekNumber, day, dayLabel, sheetKcal, targ
   // Full-screen search/serving panel
   if (showSearch) {
     return (
-      <div className="fixed inset-0 z-40 bg-background flex flex-col">
+      <div className="fixed inset-0 z-[70] bg-background flex flex-col">
         {/* Panel header */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-border sticky top-0 bg-background">
           <button
@@ -466,7 +478,7 @@ export default function FoodTracker({ weekNumber, day, dayLabel, sheetKcal, targ
   // Fullscreen scanner
   if (showScanner) {
     return (
-      <Suspense fallback={<div className="fixed inset-0 z-50 bg-black flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}>
+      <Suspense fallback={<div className="fixed inset-0 z-[80] bg-black flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}>
         <BarcodeScanner
           onDetected={handleBarcodeDetected}
           onClose={() => setShowScanner(false)}

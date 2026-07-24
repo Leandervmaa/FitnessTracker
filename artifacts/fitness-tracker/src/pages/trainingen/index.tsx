@@ -51,7 +51,7 @@ export default function TrainingList() {
         <WeekSelector />
       </header>
 
-      <div className="w-full p-6 pb-24 flex flex-col gap-4">
+      <div className="w-full p-6 flex flex-col gap-4 client-page-end-space">
         {loading && (
           <>
             <Skeleton className="w-full h-32 rounded-xl" />

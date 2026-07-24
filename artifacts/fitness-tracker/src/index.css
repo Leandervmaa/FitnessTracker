@@ -228,6 +228,27 @@
  * need to be distinguished from eachother visually.
  */
 @layer utilities {
+  .client-page-end-space {
+    padding-bottom: calc(8rem + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  .client-deep-end-space {
+    padding-bottom: calc(12rem + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  .client-fixed-action {
+    bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .trainer-page-end-space {
+    padding-bottom: 3rem !important;
+  }
+
+  .scroll-x-safe {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+  }
 
   /* Hide ugly search cancel button in Chrome until we can style it properly */
   input[type="search"]::-webkit-search-cancel-button {

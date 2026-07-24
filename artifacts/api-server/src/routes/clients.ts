@@ -14,6 +14,7 @@ import {
   plannedWorkoutExercisesTable,
   plannedWorkoutsTable,
   progressPhotosTable,
+  trainerFeedbackTable,
   usersTable,
 } from "@workspace/db";
 import { createClientWithUser, hashPassword, publicUser } from "../services/identityService.js";
@@ -47,7 +48,21 @@ router.get("/", async (req, res) => {
   try {
     const clients = await db.select().from(clientsTable);
     const users = await db.select().from(usersTable).where(eq(usersTable.role, "client"));
+    const plannedWorkouts = await db
+      .select({
+        clientId: plannedWorkoutsTable.clientId,
+        weekNumber: plannedWorkoutsTable.weekNumber,
+      })
+      .from(plannedWorkoutsTable);
     const userByClient = new Map(users.map((u) => [u.clientId, publicUser(u)]));
+    const plannedWeeksByClient = new Map<string, Set<number>>();
+
+    for (const workout of plannedWorkouts) {
+      const weeks = plannedWeeksByClient.get(workout.clientId) ?? new Set<number>();
+      weeks.add(workout.weekNumber);
+      plannedWeeksByClient.set(workout.clientId, weeks);
+    }
+
     const frontPhotos = await db
       .select({
         id: progressPhotosTable.id,
@@ -70,11 +85,19 @@ router.get("/", async (req, res) => {
     }
 
     return void res.json(
-      clients.map((client) => ({
-        ...client,
-        user: userByClient.get(client.id) ?? null,
-        avatarPhotoId: latestFrontPhotoByClient.get(client.id)?.id ?? null,
-      })),
+      clients.map((client) => {
+        const plannedWeekNumbers = Array.from(plannedWeeksByClient.get(client.id) ?? []).sort((a, b) => a - b);
+
+        return {
+          ...client,
+          user: userByClient.get(client.id) ?? null,
+          avatarPhotoId: latestFrontPhotoByClient.get(client.id)?.id ?? null,
+          plannedWeekNumbers,
+          plannedWeekCount: plannedWeekNumbers.length,
+          firstPlannedWeek: plannedWeekNumbers[0] ?? null,
+          lastPlannedWeek: plannedWeekNumbers.length > 0 ? plannedWeekNumbers[plannedWeekNumbers.length - 1] : null,
+        };
+      }),
     );
   } catch (err) {
     req.log.error({ err }, "Failed to list clients");
@@ -200,6 +223,7 @@ router.delete("/:clientId", async (req, res) => {
       await tx.delete(exerciseLogsTable).where(eq(exerciseLogsTable.clientId, clientId));
       await tx.delete(nutritionEntriesTable).where(eq(nutritionEntriesTable.clientId, clientId));
       await tx.delete(feedbackAnswersTable).where(eq(feedbackAnswersTable.clientId, clientId));
+      await tx.delete(trainerFeedbackTable).where(eq(trainerFeedbackTable.clientId, clientId));
       await tx.delete(progressPhotosTable).where(eq(progressPhotosTable.clientId, clientId));
       await tx.delete(foodLogsTable).where(eq(foodLogsTable.clientId, clientId));
       await tx.delete(usersTable).where(eq(usersTable.clientId, clientId));

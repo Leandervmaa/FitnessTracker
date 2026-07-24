@@ -4,6 +4,7 @@ import {
   exerciseLogsTable,
   exerciseSetLogsTable,
   feedbackAnswersTable,
+  foodLogsTable,
   nutritionEntriesTable,
   plannedWorkoutExercisesTable,
   plannedWorkoutsTable,
@@ -23,12 +24,13 @@ const PHOTO_WEEKS      = new Set([1, 4, 7, 10, 13, 16, 20, 23, 26]);
 async function buildWeekSummary(weekNumber: number, clientId: string) {
   const weekProgram = getWeek(weekNumber, clientId);
 
-  const [logs, plannedWorkouts, plannedExercises, plannedSetLogs, nutritionEntries, feedbackAnswers, photos] = await Promise.all([
+  const [logs, plannedWorkouts, plannedExercises, plannedSetLogs, nutritionEntries, foodLogs, feedbackAnswers, photos] = await Promise.all([
     db.select().from(exerciseLogsTable).where(and(eq(exerciseLogsTable.clientId, clientId), eq(exerciseLogsTable.weekNumber, weekNumber))),
     db.select().from(plannedWorkoutsTable).where(and(eq(plannedWorkoutsTable.clientId, clientId), eq(plannedWorkoutsTable.weekNumber, weekNumber))),
     db.select().from(plannedWorkoutExercisesTable).where(and(eq(plannedWorkoutExercisesTable.clientId, clientId), eq(plannedWorkoutExercisesTable.weekNumber, weekNumber))),
     db.select().from(exerciseSetLogsTable).where(and(eq(exerciseSetLogsTable.clientId, clientId), eq(exerciseSetLogsTable.weekNumber, weekNumber))),
     db.select().from(nutritionEntriesTable).where(and(eq(nutritionEntriesTable.clientId, clientId), eq(nutritionEntriesTable.weekNumber, weekNumber))),
+    db.select().from(foodLogsTable).where(and(eq(foodLogsTable.clientId, clientId), eq(foodLogsTable.weekNumber, weekNumber))),
     db.select().from(feedbackAnswersTable).where(and(eq(feedbackAnswersTable.clientId, clientId), eq(feedbackAnswersTable.weekNumber, weekNumber))),
     PHOTO_WEEKS.has(weekNumber)
       ? db.select().from(progressPhotosTable).where(and(eq(progressPhotosTable.clientId, clientId), eq(progressPhotosTable.weekNumber, weekNumber)))
@@ -53,7 +55,7 @@ async function buildWeekSummary(weekNumber: number, clientId: string) {
     ).length;
   }
 
-  const nutritionDays       = new Set(nutritionEntries.map((n) => n.day)).size;
+  const nutritionDays       = new Set([...nutritionEntries.map((n) => n.day), ...foodLogs.map((n) => n.day)]).size;
   const photosRequired      = PHOTO_WEEKS.has(weekNumber);
   const uploadedAngles      = new Set(photos.map((p) => p.angle));
   const photosComplete      = !photosRequired || PHOTO_ANGLES.every(a => uploadedAngles.has(a));
@@ -62,11 +64,20 @@ async function buildWeekSummary(weekNumber: number, clientId: string) {
   const feedbackComplete    = feedbackAnswers.length >= QUESTIONS_COUNT;
 
   const isComplete = trainingComplete && dagboekComplete && feedbackComplete && photosComplete;
+  const hasAnyData = (
+    logs.length > 0 ||
+    plannedSetLogs.length > 0 ||
+    nutritionEntries.length > 0 ||
+    foodLogs.length > 0 ||
+    feedbackAnswers.length > 0 ||
+    photos.length > 0
+  );
 
   return {
     weekNumber,
     label: `Week ${weekNumber}`,
     isComplete,
+    hasAnyData,
     workoutsCompleted:      completedWorkouts,
     workoutsTotal,
     nutritionDaysCompleted: nutritionDays,
@@ -111,16 +122,28 @@ router.get("/current", async (req, res) => {
     const allWeekNumbers = Array.from(
       new Set([...getAllWeekNumbers(clientId), ...plannedWeeks.map((week) => week.weekNumber)]),
     ).sort((a, b) => a - b);
-    let currentWeek = allWeekNumbers[0] ?? 1;
-
-    for (const weekNumber of allWeekNumbers) {
-      const summary = await buildWeekSummary(weekNumber, clientId);
-      currentWeek = weekNumber;
-      if (!summary.isComplete) break;
+    if (allWeekNumbers.length === 0) {
+      return void res.json(await buildWeekSummary(1, clientId));
     }
 
-    const summary = await buildWeekSummary(currentWeek, clientId);
-    return void res.json(summary);
+    const summaries = await Promise.all(allWeekNumbers.map((weekNumber) => buildWeekSummary(weekNumber, clientId)));
+
+    if (req.auth?.user.role === "trainer") {
+      return void res.json(summaries[summaries.length - 1]);
+    }
+
+    const weeksWithData = summaries.filter((summary) => summary.hasAnyData);
+    if (weeksWithData.length === 0) {
+      return void res.json(summaries[0]);
+    }
+
+    const latestDataWeek = weeksWithData[weeksWithData.length - 1];
+    if (!latestDataWeek.isComplete) {
+      return void res.json(latestDataWeek);
+    }
+
+    const nextWeek = summaries.find((summary) => summary.weekNumber > latestDataWeek.weekNumber);
+    return void res.json(nextWeek ?? latestDataWeek);
   } catch (err) {
     req.log.error({ err }, "Failed to get current week");
     return void res.status(500).json({ error: "Interne serverfout" });

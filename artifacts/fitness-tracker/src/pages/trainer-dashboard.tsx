@@ -21,6 +21,10 @@ type ClientRecord = {
   status: string;
   user: { username: string } | null;
   avatarPhotoId: number | null;
+  plannedWeekNumbers: number[];
+  plannedWeekCount: number;
+  firstPlannedWeek: number | null;
+  lastPlannedWeek: number | null;
 };
 
 const emptyForm = {
@@ -93,8 +97,8 @@ export default function TrainerDashboard() {
         .some((value) => String(value).toLowerCase().includes(q)),
     );
   }, [clients, query]);
-  const connectedClients = clients.filter((client) => client.liveSheetUrl || client.liveSheetType === "excel_upload").length;
-  const missingSheetClients = Math.max(0, clients.length - connectedClients);
+  const clientsWithTrajectory = clients.filter((client) => client.plannedWeekCount > 0).length;
+  const clientsWithoutWeeks = Math.max(0, clients.length - clientsWithTrajectory);
   const activeClient = clients.find((client) => client.id === activeClientId);
 
   const openNew = () => {
@@ -210,11 +214,11 @@ export default function TrainerDashboard() {
         </div>
       </header>
 
-      <main className="w-full max-w-7xl mx-auto p-4 md:p-6 space-y-5">
+      <main className="w-full max-w-7xl mx-auto p-4 md:p-6 space-y-5 trainer-page-end-space">
         <section className="grid gap-3 md:grid-cols-3">
           <CoachStat icon={<Users className="h-5 w-5" />} label="Klanten" value={clients.length} />
-          <CoachStat icon={<CheckCircle2 className="h-5 w-5" />} label="Data gekoppeld" value={connectedClients} />
-          <CoachStat icon={<AlertCircle className="h-5 w-5" />} label="Aandacht nodig" value={missingSheetClients} muted={missingSheetClients === 0} />
+          <CoachStat icon={<CheckCircle2 className="h-5 w-5" />} label="Trajecten gevuld" value={clientsWithTrajectory} />
+          <CoachStat icon={<AlertCircle className="h-5 w-5" />} label="Nog zonder weken" value={clientsWithoutWeeks} muted={clientsWithoutWeeks === 0} />
         </section>
 
         <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
@@ -230,13 +234,50 @@ export default function TrainerDashboard() {
               </Button>
             </div>
 
+            <div className={`rounded-lg border p-4 ${activeClient ? "border-primary/30 bg-primary/5" : "border-dashed border-border bg-card"}`}>
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div className="flex items-center gap-3 min-w-0">
+                  {activeClient ? (
+                    <ClientAvatar client={activeClient} className="h-12 w-12" />
+                  ) : (
+                    <div className="h-12 w-12 rounded-full bg-secondary border border-border flex items-center justify-center shrink-0">
+                      <Users className="h-5 w-5 text-muted-foreground" />
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-black uppercase tracking-wider text-primary">Actief bekeken traject</p>
+                    <h2 className="text-lg font-black text-foreground truncate">{activeClient?.name || "Geen traject geselecteerd"}</h2>
+                    <p className="text-sm text-muted-foreground truncate">
+                      {activeClient
+                        ? `${formatWeekCount(activeClient)} in traject${activeClient.goal ? ` - ${activeClient.goal}` : ""}`
+                        : "Kies een klant in de tabel om het traject te bekijken."}
+                    </p>
+                  </div>
+                </div>
+                {activeClient && (
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Button size="sm" onClick={() => setLocation("/weekplanner")} className="font-bold">
+                      <CalendarDays className="h-4 w-4 mr-1.5" />
+                      Weekplanner
+                    </Button>
+                    <Button size="icon" variant="outline" onClick={() => setLocation("/vergelijk")} title="Voortgang">
+                      <ArrowRight className="h-4 w-4" />
+                    </Button>
+                    <Button size="icon" variant="outline" onClick={() => setLocation("/excel-viewer")} title="Sheet bekijken">
+                      <FileSpreadsheet className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
+
             <div className="overflow-hidden rounded-lg border border-border bg-card">
-              <div className="w-full overflow-x-auto overscroll-x-contain">
-                <div className="min-w-full md:min-w-[920px]">
-                  <div className="hidden md:grid grid-cols-[minmax(180px,1.15fr)_minmax(170px,1fr)_150px_130px_230px] gap-3 bg-muted/40 px-4 py-2 text-[11px] font-black uppercase tracking-wider text-muted-foreground">
+              <div className="w-full scroll-x-safe">
+                <div className="min-w-full md:min-w-[1050px]">
+                  <div className="hidden md:grid grid-cols-[minmax(210px,1.15fr)_minmax(170px,1fr)_150px_130px_280px] gap-3 bg-muted/40 px-4 py-2 text-[11px] font-black uppercase tracking-wider text-muted-foreground">
                     <span>Klant</span>
                     <span>Doel</span>
-                    <span>Data</span>
+                    <span>Traject</span>
                     <span>Login</span>
                     <span className="text-right">Acties</span>
                   </div>
@@ -249,13 +290,13 @@ export default function TrainerDashboard() {
                     </div>
                   ) : (
                     filtered.map((client) => {
-                      const hasData = !!client.liveSheetUrl || client.liveSheetType === "excel_upload";
+                      const hasTrajectory = client.plannedWeekCount > 0;
                       const isActive = activeClientId === client.id;
 
                       return (
                         <div
                           key={client.id}
-                          className={`grid gap-3 border-t border-border px-4 py-3 md:grid-cols-[minmax(180px,1.15fr)_minmax(170px,1fr)_150px_130px_230px] md:items-center ${isActive ? "bg-primary/5" : ""}`}
+                          className={`grid gap-3 border-t px-4 py-3 md:grid-cols-[minmax(210px,1.15fr)_minmax(170px,1fr)_150px_130px_280px] md:items-center ${isActive ? "border-primary/25 bg-primary/5 shadow-[inset_4px_0_0_hsl(var(--primary))]" : "border-border"}`}
                         >
                           <div className="min-w-0">
                             <div className="flex items-center gap-3">
@@ -271,36 +312,42 @@ export default function TrainerDashboard() {
                           </div>
                           <p className="hidden md:block text-sm text-muted-foreground truncate">{client.goal || "Geen doel ingevuld"}</p>
                           <div>
-                            <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold ${hasData ? "bg-green-50 text-green-700 border border-green-200 dark:bg-green-950/30 dark:text-green-300 dark:border-green-800" : "bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-800"}`}>
-                              {hasData ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertCircle className="h-3.5 w-3.5" />}
-                              {client.liveSheetUrl ? "Live sheet" : client.liveSheetType === "excel_upload" ? "Excel" : "Geen data"}
-                            </span>
+                            <div className="space-y-1">
+                              <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold ${hasTrajectory ? "bg-green-50 text-green-700 border border-green-200 dark:bg-green-950/30 dark:text-green-300 dark:border-green-800" : "bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-800"}`}>
+                                {hasTrajectory ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertCircle className="h-3.5 w-3.5" />}
+                                {formatWeekCount(client)}
+                              </span>
+                              <p className="text-[11px] font-semibold text-muted-foreground truncate">
+                                {formatWeekRange(client)}
+                              </p>
+                            </div>
                           </div>
                           <p className="text-sm font-semibold text-muted-foreground truncate">{client.user?.username || "geen login"}</p>
-                          <div className="flex flex-wrap items-center justify-start gap-2 md:justify-end">
-                            <Button size="sm" className="font-bold min-w-28" onClick={() => selectClient(client.id)}>
+                          <div className="flex items-center justify-start gap-2 md:justify-end md:flex-nowrap min-w-[260px]">
+                            <Button size="sm" className="font-bold min-w-28 shrink-0" onClick={() => selectClient(client.id)}>
                               <CalendarDays className="h-4 w-4 mr-1.5" />
                               {isActive ? "Gekozen" : "Beheren"}
                             </Button>
                             <Button
                               variant="outline"
                               size="icon"
+                              className="h-9 w-9 shrink-0"
                               onClick={() => downloadClientExcel(client.id, client.name)}
                               disabled={downloadingClient === client.id}
                               title="Exporteren"
                             >
                               <Download className="h-4 w-4" />
                             </Button>
-                            <Button variant="outline" size="icon" onClick={() => openEdit(client)} title="Bewerken">
+                            <Button variant="outline" size="icon" className="h-9 w-9 shrink-0" onClick={() => openEdit(client)} title="Bewerken">
                               <Pencil className="h-4 w-4" />
                             </Button>
                             <Button
                               variant="outline"
                               size="icon"
+                              className="h-9 w-9 shrink-0 text-destructive hover:text-destructive"
                               onClick={() => deleteClient(client)}
                               disabled={deletingClient === client.id}
                               title="Klant verwijderen"
-                              className="text-destructive hover:text-destructive"
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
@@ -438,6 +485,17 @@ export default function TrainerDashboard() {
       </Dialog>
     </div>
   );
+}
+
+function formatWeekCount(client: ClientRecord) {
+  const count = client.plannedWeekCount || 0;
+  return count === 1 ? "1 week" : `${count} weken`;
+}
+
+function formatWeekRange(client: ClientRecord) {
+  if (!client.plannedWeekCount) return "Nog geen weken in traject";
+  if (client.firstPlannedWeek === client.lastPlannedWeek) return `Week ${client.firstPlannedWeek}`;
+  return `Week ${client.firstPlannedWeek} t/m ${client.lastPlannedWeek}`;
 }
 
 function Field({ label, value, onChange, type = "text" }: { label: string; value: string; onChange: (value: string) => void; type?: string }) {

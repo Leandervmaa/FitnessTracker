@@ -761,6 +761,13 @@ export default function WeekplannerPage() {
     new Set([...(plannedWeeks?.weekNumbers || []), plannerWeekNumber]),
   ).sort((a, b) => a - b);
   const sourceWeekOptions = (plannedWeeks?.weekNumbers || []).filter(w => w !== plannerWeekNumber);
+  const comparingSideBySide = compareWeekNumber !== null && sideBySide;
+  const weekPaneClass = comparingSideBySide
+    ? "space-y-4 xl:h-[calc(100dvh-13rem)] xl:overflow-y-auto xl:overscroll-contain xl:pr-2 xl:pb-6"
+    : "space-y-4";
+  const weekPaneHeaderClass = comparingSideBySide
+    ? "sticky top-0 z-10 flex items-center justify-between border-b border-border bg-background/95 pb-2 pt-1 backdrop-blur"
+    : "flex items-center justify-between border-b border-border pb-2";
 
   return (
     <div className="min-h-[100dvh] w-full bg-background">
@@ -970,18 +977,18 @@ export default function WeekplannerPage() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto p-4 md:p-6">
+      <main className="max-w-7xl mx-auto p-4 md:p-6 trainer-page-end-space">
         {error && <p className="text-sm font-semibold text-destructive mb-4">{error}</p>}
 
         <div className={
-          compareWeekNumber !== null && sideBySide
+          comparingSideBySide
             ? "grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)] 2xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_320px] grid-cols-1"
             : "grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]"
         }>
           {/* ── Column 1: active workouts ── */}
-          <div className="space-y-4">
-            {compareWeekNumber !== null && sideBySide && (
-              <div className="flex items-center justify-between border-b border-border pb-2">
+          <div className={weekPaneClass}>
+            {comparingSideBySide && (
+              <div className={weekPaneHeaderClass}>
                 <h2 className="text-lg font-black text-foreground">Week {plannerWeekNumber} (Actief)</h2>
                 <span className="text-xs text-muted-foreground">{week?.workouts?.length || 0} trainingen</span>
               </div>
@@ -1022,9 +1029,9 @@ export default function WeekplannerPage() {
           </div>
 
           {/* ── Column 2: reference workouts ── */}
-          {compareWeekNumber !== null && sideBySide && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between border-b border-border pb-2">
+          {comparingSideBySide && (
+            <div className={weekPaneClass}>
+              <div className={weekPaneHeaderClass}>
                 <h2 className="text-lg font-black text-muted-foreground">Week {compareWeekNumber} (Referentie)</h2>
                 <span className="text-xs text-muted-foreground">{compareWeek?.workouts?.length || 0} trainingen</span>
               </div>
@@ -1047,7 +1054,7 @@ export default function WeekplannerPage() {
 
           {/* ── Column 3: sidebar ── */}
           <aside className={
-            compareWeekNumber !== null && sideBySide
+            comparingSideBySide
               ? "space-y-4 xl:col-span-2 2xl:col-span-1"
               : "space-y-4"
           }>

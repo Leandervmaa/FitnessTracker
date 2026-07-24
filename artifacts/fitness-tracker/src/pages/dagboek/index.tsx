@@ -159,6 +159,10 @@ export default function DagboekPage() {
 
     const onSuccess = () => {
       queryClient.invalidateQueries({ queryKey: getGetNutritionEntriesQueryKey({ weekNumber: selectedWeek }) });
+      queryClient.invalidateQueries({ queryKey: ["weeks"] });
+      queryClient.invalidateQueries({ queryKey: ["current-week"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/weeks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/weeks/current"] });
       toast({
         title: "Opgeslagen ✓",
         description: `${dayInfo?.nl} week ${selectedWeek} is opgeslagen.`,
@@ -233,7 +237,7 @@ export default function DagboekPage() {
         </div>
       )}
 
-      <div className="w-full max-w-4xl p-4 flex flex-col">
+      <div className="w-full max-w-4xl p-4 flex flex-col client-page-end-space">
         <Tabs value={activeDay} onValueChange={setActiveDay} className="w-full">
           <TabsList className="w-full h-12 p-1 mb-6 grid grid-cols-7 bg-secondary">
             {DAYS.map(day => {

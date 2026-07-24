@@ -8,6 +8,7 @@ import { getScopedClientId } from "../lib/auth.js";
 import { getClientLiveSheet } from "../services/clientSheetService.js";
 import { syncClientDataSheets } from "../services/planningSheetService.js";
 import { writeNutritionEntryToSheet } from "../services/sheetsParser.js";
+import { notifyClients } from "./sync.js";
 
 const router = Router();
 
@@ -159,6 +160,7 @@ router.post("/", async (req, res) => {
     }
 
     syncDataSheets(req, clientId);
+    notifyClients("nutrition_updated", { clientId, weekNumber });
 
     return void res.status(201).json({
       ...entry,
@@ -217,6 +219,7 @@ router.put("/:id", async (req, res) => {
     }
 
     syncDataSheets(req, clientId);
+    notifyClients("nutrition_updated", { clientId, weekNumber: updated.weekNumber });
 
     return void res.json({
       ...updated,
