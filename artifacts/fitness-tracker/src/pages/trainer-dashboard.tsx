@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLocation } from "wouter";
-import { AlertCircle, ArrowRight, BookOpen, CalendarDays, CheckCircle2, Download, FileSpreadsheet, Link as LinkIcon, LogOut, Plus, Search, UserRound, Pencil, PlayCircle, Trash2, Upload, Users } from "lucide-react";
+import { AlertCircle, ArrowRight, BookOpen, CalendarDays, CheckCircle2, Download, FileSpreadsheet, Link as LinkIcon, LogOut, Plus, Search, UserRound, Pencil, Trash2, Upload, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -20,6 +20,7 @@ type ClientRecord = {
   liveSheetUrl: string | null;
   status: string;
   user: { username: string } | null;
+  avatarPhotoId: number | null;
 };
 
 const emptyForm = {
@@ -166,9 +167,8 @@ export default function TrainerDashboard() {
     }
   };
 
-  const openClient = (clientId: string) => {
+  const selectClient = (clientId: string) => {
     setActiveClientId(clientId);
-    setLocation("/");
   };
 
   const deleteClient = async (client: ClientRecord) => {
@@ -231,89 +231,86 @@ export default function TrainerDashboard() {
             </div>
 
             <div className="overflow-hidden rounded-lg border border-border bg-card">
-              <div className="hidden md:grid grid-cols-[minmax(180px,1.15fr)_minmax(170px,1fr)_150px_130px_300px] gap-3 bg-muted/40 px-4 py-2 text-[11px] font-black uppercase tracking-wider text-muted-foreground">
-                <span>Klant</span>
-                <span>Doel</span>
-                <span>Data</span>
-                <span>Login</span>
-                <span className="text-right">Acties</span>
-              </div>
+              <div className="w-full overflow-x-auto overscroll-x-contain">
+                <div className="min-w-full md:min-w-[920px]">
+                  <div className="hidden md:grid grid-cols-[minmax(180px,1.15fr)_minmax(170px,1fr)_150px_130px_230px] gap-3 bg-muted/40 px-4 py-2 text-[11px] font-black uppercase tracking-wider text-muted-foreground">
+                    <span>Klant</span>
+                    <span>Doel</span>
+                    <span>Data</span>
+                    <span>Login</span>
+                    <span className="text-right">Acties</span>
+                  </div>
 
-              {filtered.length === 0 ? (
-                <div className="p-10 text-center">
-                  <Users className="h-9 w-9 text-muted-foreground mx-auto mb-3" />
-                  <p className="font-bold text-foreground">Geen klanten gevonden</p>
-                  <p className="text-sm text-muted-foreground mt-1">Pas je zoekopdracht aan of voeg een klant toe.</p>
-                </div>
-              ) : (
-                filtered.map((client) => {
-                  const hasData = !!client.liveSheetUrl || client.liveSheetType === "excel_upload";
-                  const isActive = activeClientId === client.id;
-
-                  return (
-                    <div
-                      key={client.id}
-                      className={`grid gap-3 border-t border-border px-4 py-3 md:grid-cols-[minmax(180px,1.15fr)_minmax(170px,1fr)_150px_130px_300px] md:items-center ${isActive ? "bg-primary/5" : ""}`}
-                    >
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <h2 className="font-black text-foreground truncate">{client.name}</h2>
-                          {isActive && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-black text-primary">Actief</span>}
-                        </div>
-                        <p className="md:hidden text-xs text-muted-foreground mt-1 truncate">{client.goal || "Geen doel ingevuld"}</p>
-                      </div>
-                      <p className="hidden md:block text-sm text-muted-foreground truncate">{client.goal || "Geen doel ingevuld"}</p>
-                      <div>
-                        <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold ${hasData ? "bg-green-50 text-green-700 border border-green-200 dark:bg-green-950/30 dark:text-green-300 dark:border-green-800" : "bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-800"}`}>
-                          {hasData ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertCircle className="h-3.5 w-3.5" />}
-                          {client.liveSheetUrl ? "Live sheet" : client.liveSheetType === "excel_upload" ? "Excel" : "Geen data"}
-                        </span>
-                      </div>
-                      <p className="text-sm font-semibold text-muted-foreground truncate">{client.user?.username || "geen login"}</p>
-                      <div className="flex flex-wrap items-center justify-start gap-2 md:justify-end">
-                        <Button size="sm" className="font-bold" onClick={() => openClient(client.id)}>
-                          <PlayCircle className="h-4 w-4 mr-1.5" />
-                          Openen
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="font-bold"
-                          onClick={() => {
-                            setActiveClientId(client.id);
-                            setLocation("/weekplanner");
-                          }}
-                        >
-                          <CalendarDays className="h-4 w-4 mr-1.5" />
-                          Planner
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          onClick={() => downloadClientExcel(client.id, client.name)}
-                          disabled={downloadingClient === client.id}
-                          title="Exporteren"
-                        >
-                          <Download className="h-4 w-4" />
-                        </Button>
-                        <Button variant="outline" size="icon" onClick={() => openEdit(client)} title="Bewerken">
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          onClick={() => deleteClient(client)}
-                          disabled={deletingClient === client.id}
-                          title="Klant verwijderen"
-                          className="text-destructive hover:text-destructive"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
+                  {filtered.length === 0 ? (
+                    <div className="p-10 text-center">
+                      <Users className="h-9 w-9 text-muted-foreground mx-auto mb-3" />
+                      <p className="font-bold text-foreground">Geen klanten gevonden</p>
+                      <p className="text-sm text-muted-foreground mt-1">Pas je zoekopdracht aan of voeg een klant toe.</p>
                     </div>
-                  );
-                })
-              )}
+                  ) : (
+                    filtered.map((client) => {
+                      const hasData = !!client.liveSheetUrl || client.liveSheetType === "excel_upload";
+                      const isActive = activeClientId === client.id;
+
+                      return (
+                        <div
+                          key={client.id}
+                          className={`grid gap-3 border-t border-border px-4 py-3 md:grid-cols-[minmax(180px,1.15fr)_minmax(170px,1fr)_150px_130px_230px] md:items-center ${isActive ? "bg-primary/5" : ""}`}
+                        >
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-3">
+                              <ClientAvatar client={client} className="h-10 w-10" />
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <h2 className="font-black text-foreground truncate">{client.name}</h2>
+                                  {isActive && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-black text-primary">Actief</span>}
+                                </div>
+                                <p className="md:hidden text-xs text-muted-foreground mt-1 truncate">{client.goal || "Geen doel ingevuld"}</p>
+                              </div>
+                            </div>
+                          </div>
+                          <p className="hidden md:block text-sm text-muted-foreground truncate">{client.goal || "Geen doel ingevuld"}</p>
+                          <div>
+                            <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold ${hasData ? "bg-green-50 text-green-700 border border-green-200 dark:bg-green-950/30 dark:text-green-300 dark:border-green-800" : "bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-800"}`}>
+                              {hasData ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertCircle className="h-3.5 w-3.5" />}
+                              {client.liveSheetUrl ? "Live sheet" : client.liveSheetType === "excel_upload" ? "Excel" : "Geen data"}
+                            </span>
+                          </div>
+                          <p className="text-sm font-semibold text-muted-foreground truncate">{client.user?.username || "geen login"}</p>
+                          <div className="flex flex-wrap items-center justify-start gap-2 md:justify-end">
+                            <Button size="sm" className="font-bold min-w-28" onClick={() => selectClient(client.id)}>
+                              <CalendarDays className="h-4 w-4 mr-1.5" />
+                              {isActive ? "Gekozen" : "Beheren"}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              onClick={() => downloadClientExcel(client.id, client.name)}
+                              disabled={downloadingClient === client.id}
+                              title="Exporteren"
+                            >
+                              <Download className="h-4 w-4" />
+                            </Button>
+                            <Button variant="outline" size="icon" onClick={() => openEdit(client)} title="Bewerken">
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              onClick={() => deleteClient(client)}
+                              disabled={deletingClient === client.id}
+                              title="Klant verwijderen"
+                              className="text-destructive hover:text-destructive"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
             </div>
           </div>
 
@@ -347,11 +344,40 @@ export default function TrainerDashboard() {
             </div>
 
             <div className="rounded-lg border border-border bg-card p-4">
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Actieve klant</p>
-              <h2 className="mt-1 text-lg font-black text-foreground">{activeClient?.name || "Geen klant gekozen"}</h2>
+              <div className="flex items-center gap-3">
+                {activeClient && <ClientAvatar client={activeClient} className="h-12 w-12" />}
+                <div className="min-w-0">
+                  <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Actieve klant</p>
+                  <h2 className="mt-1 text-lg font-black text-foreground truncate">{activeClient?.name || "Geen klant gekozen"}</h2>
+                </div>
+              </div>
               <p className="mt-1 text-sm text-muted-foreground">
-                {activeClient ? activeClient.goal || "Geen doel ingevuld" : "Open een klant om planning, voeding en voortgang te beheren."}
+                {activeClient ? activeClient.goal || "Geen doel ingevuld" : "Kies een klant om planning, voortgang en sheet te beheren."}
               </p>
+              {activeClient && (
+                <div className="mt-4 space-y-2">
+                  <Button onClick={() => setLocation("/weekplanner")} className="w-full justify-between font-bold">
+                    Schema aanpassen <CalendarDays className="h-4 w-4" />
+                  </Button>
+                  <Button variant="outline" onClick={() => setLocation("/vergelijk")} className="w-full justify-between font-bold">
+                    Progressie bekijken <ArrowRight className="h-4 w-4" />
+                  </Button>
+                  <Button variant="outline" onClick={() => setLocation("/excel-viewer")} className="w-full justify-between font-bold">
+                    Sheet bekijken <FileSpreadsheet className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => downloadClientExcel(activeClient.id, activeClient.name)}
+                    disabled={downloadingClient === activeClient.id}
+                    className="w-full justify-between font-bold"
+                  >
+                    Export downloaden <Download className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" onClick={() => openEdit(activeClient)} className="w-full justify-between font-bold">
+                    Klantgegevens <Pencil className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
             </div>
           </aside>
         </section>
@@ -433,6 +459,67 @@ function CoachStat({ icon, label, value, muted = false }: { icon: ReactNode; lab
         <p className="text-2xl font-black text-foreground leading-none">{value}</p>
         <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mt-1">{label}</p>
       </div>
+    </div>
+  );
+}
+
+function ClientAvatar({ client, className }: { client: ClientRecord; className: string }) {
+  const [src, setSrc] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  const initials = client.name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("") || "?";
+
+  useEffect(() => {
+    let cancelled = false;
+    let objectUrl: string | null = null;
+    setSrc(null);
+    setFailed(false);
+
+    if (!client.avatarPhotoId) return undefined;
+
+    apiFetch(`/api/progress-photos/image/${client.avatarPhotoId}`, {
+      headers: { "x-client-id": client.id },
+    })
+      .then(async (res) => {
+        if (!res.ok) throw new Error("Avatar laden mislukt");
+        const blob = await res.blob();
+        objectUrl = URL.createObjectURL(blob);
+        if (!cancelled) setSrc(objectUrl);
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      });
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [client.id, client.avatarPhotoId]);
+
+  if (src && !failed) {
+    return (
+      <img
+        src={src}
+        alt={client.name}
+        className={`${className} rounded-full object-cover border border-border bg-secondary shrink-0`}
+        loading="lazy"
+        decoding="async"
+        onError={() => setFailed(true)}
+      />
+    );
+  }
+
+  return (
+    <div className={`${className} rounded-full bg-secondary border border-border flex items-center justify-center shrink-0 text-xs font-black text-muted-foreground`}>
+      {client.avatarPhotoId && !failed ? (
+        <div className="h-4 w-4 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+      ) : (
+        initials
+      )}
     </div>
   );
 }

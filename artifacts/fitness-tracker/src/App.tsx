@@ -1,10 +1,11 @@
+import { useState } from "react";
 import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { WeekProvider } from "@/components/week-context";
 import { AuthProvider, useAuth } from "@/components/auth-context";
-import { ClientProvider, useClient } from "@/components/client-context";
+import { ClientProvider } from "@/components/client-context";
 import { TrainerClientBar } from "@/components/trainer-client-bar";
 import { TrainerDesktopNav } from "@/components/trainer-desktop-nav";
 import { BottomNav } from "@/components/bottom-nav";
@@ -43,9 +44,8 @@ const queryClient = new QueryClient({
 
 function Landing() {
   const { user } = useAuth();
-  const { activeClientId } = useClient();
 
-  if (user?.role === "trainer" && !activeClientId) {
+  if (user?.role === "trainer") {
     return <TrainerDashboard />;
   }
 
@@ -59,13 +59,13 @@ function Router() {
       <Route path="/trainer" component={TrainerRoute} />
       <Route path="/bibliotheek" component={TrainerLibraryRoute} />
       <Route path="/weekplanner" component={TrainerPlannerRoute} />
-      <Route path="/trainingen" component={TrainingList} />
-      <Route path="/trainingen/:workoutId" component={TrainingDetail} />
-      <Route path="/dagboek" component={NutritionList} />
-      <Route path="/feedback" component={FeedbackList} />
-      <Route path="/instellen" component={Instellen} />
+      <Route path="/trainingen" component={ClientTrainingListRoute} />
+      <Route path="/trainingen/:workoutId" component={ClientTrainingDetailRoute} />
+      <Route path="/dagboek" component={ClientNutritionRoute} />
+      <Route path="/feedback" component={ClientFeedbackRoute} />
+      <Route path="/instellen" component={ClientSettingsRoute} />
       <Route path="/excel-viewer" component={ExcelViewer} />
-      <Route path="/progressie-fotos" component={ProgressieFotos} />
+      <Route path="/progressie-fotos" component={ClientPhotosRoute} />
       <Route path="/vergelijk" component={Vergelijk} />
       <Route component={NotFound} />
     </Switch>
@@ -92,6 +92,42 @@ function TrainerPlannerRoute() {
   return <WeekplannerPage />;
 }
 
+function ClientTrainingListRoute() {
+  const { user } = useAuth();
+  if (user?.role === "trainer") return <TrainerDashboard />;
+  return <TrainingList />;
+}
+
+function ClientTrainingDetailRoute() {
+  const { user } = useAuth();
+  if (user?.role === "trainer") return <TrainerDashboard />;
+  return <TrainingDetail />;
+}
+
+function ClientNutritionRoute() {
+  const { user } = useAuth();
+  if (user?.role === "trainer") return <TrainerDashboard />;
+  return <NutritionList />;
+}
+
+function ClientFeedbackRoute() {
+  const { user } = useAuth();
+  if (user?.role === "trainer") return <TrainerDashboard />;
+  return <FeedbackList />;
+}
+
+function ClientSettingsRoute() {
+  const { user } = useAuth();
+  if (user?.role === "trainer") return <TrainerDashboard />;
+  return <Instellen />;
+}
+
+function ClientPhotosRoute() {
+  const { user } = useAuth();
+  if (user?.role === "trainer") return <TrainerDashboard />;
+  return <ProgressieFotos />;
+}
+
 /** Activates SSE connection — must be inside QueryClientProvider */
 function RealtimeSyncBridge() {
   useRealtimeSync();
@@ -114,6 +150,15 @@ function App() {
 function AuthShell() {
   const { user, loading } = useAuth();
   const isTrainer = user?.role === "trainer";
+  const [trainerNavCollapsed, setTrainerNavCollapsed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem("trainer-nav-collapsed") === "true";
+  });
+
+  const updateTrainerNavCollapsed = (collapsed: boolean) => {
+    setTrainerNavCollapsed(collapsed);
+    window.localStorage.setItem("trainer-nav-collapsed", String(collapsed));
+  };
 
   if (loading) {
     return (
@@ -130,8 +175,8 @@ function AuthShell() {
       <WeekProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
           <RealtimeSyncBridge />
-          <TrainerDesktopNav />
-          <div className={isTrainer ? "lg:pl-64 min-h-[100dvh]" : ""}>
+          <TrainerDesktopNav collapsed={trainerNavCollapsed} onCollapsedChange={updateTrainerNavCollapsed} />
+          <div className={isTrainer ? `${trainerNavCollapsed ? "lg:pl-20" : "lg:pl-64"} min-h-[100dvh] transition-[padding] duration-200 ease-out` : ""}>
             <TrainerClientBar />
             <Router />
           </div>

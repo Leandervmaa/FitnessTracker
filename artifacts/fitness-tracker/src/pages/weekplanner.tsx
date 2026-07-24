@@ -975,7 +975,7 @@ export default function WeekplannerPage() {
 
         <div className={
           compareWeekNumber !== null && sideBySide
-            ? "grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_340px] lg:grid-cols-[1fr_1fr] grid-cols-1"
+            ? "grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)] 2xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_320px] grid-cols-1"
             : "grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]"
         }>
           {/* ── Column 1: active workouts ── */}
@@ -1006,6 +1006,7 @@ export default function WeekplannerPage() {
                     quickAddExercise.mutate({ workoutId, name, libraryId })
                   }
                   library={library}
+                  compactFields={compareWeekNumber !== null && sideBySide}
                   onDuplicateWorkout={() =>
                     copyWorkout.mutate({ workoutId: workout.id, targetWeek: plannerWeekNumber })
                   }
@@ -1047,7 +1048,7 @@ export default function WeekplannerPage() {
           {/* ── Column 3: sidebar ── */}
           <aside className={
             compareWeekNumber !== null && sideBySide
-              ? "space-y-4 lg:col-span-2 xl:col-span-1"
+              ? "space-y-4 xl:col-span-2 2xl:col-span-1"
               : "space-y-4"
           }>
             {/* Compare week panel */}
@@ -1600,6 +1601,7 @@ function WorkoutCard({
   onAddTemplate,
   onQuickAddExercise,
   library,
+  compactFields,
   onDuplicateWorkout,
 }: {
   workout: PlannedWorkout;
@@ -1614,6 +1616,7 @@ function WorkoutCard({
   onAddTemplate: () => void;
   onQuickAddExercise: (workoutId: string, name: string, libraryId?: string) => void;
   library: LibraryExercise[];
+  compactFields?: boolean;
   onDuplicateWorkout: () => void;
 }) {
   const sorted = [...workout.exercises].sort((a, b) => a.sortOrder - b.sortOrder);
@@ -1732,6 +1735,7 @@ function WorkoutCard({
             onMoveUp={() => onMoveExercise(workout, exercise, -1)}
             onMoveDown={() => onMoveExercise(workout, exercise, 1)}
             onDelete={() => onDeleteExercise(exercise)}
+            compactFields={compactFields}
           />
         ))}
         {sorted.length === 0 && (
@@ -1823,6 +1827,7 @@ function ExerciseRow({
   onMoveUp,
   onMoveDown,
   onDelete,
+  compactFields,
 }: {
   exercise: PlannedExercise;
   isFirst: boolean;
@@ -1832,28 +1837,63 @@ function ExerciseRow({
   onMoveUp: () => void;
   onMoveDown: () => void;
   onDelete: () => void;
+  compactFields?: boolean;
 }) {
-  return (
-    <div className="px-4 py-3 grid gap-3 lg:grid-cols-[minmax(210px,1.2fr)_72px_120px_92px_minmax(180px,1fr)_auto] lg:items-center">
-      {/* Thumbnail */}
-      <div className="flex items-center gap-3 min-w-0">
-        {exercise.imageUrl ? (
-          <img
-            src={exercise.imageUrl}
-            alt={exercise.name}
-            className="h-12 w-12 rounded-md object-cover shrink-0"
-          />
-        ) : (
-          <div className="h-12 w-12 rounded-md bg-muted flex items-center justify-center shrink-0">
-            <Dumbbell className="h-5 w-5 text-muted-foreground/50" />
-          </div>
-        )}
-        <button type="button" onClick={onEdit} className="min-w-0 text-left group">
-          <h3 className="font-bold text-sm group-hover:text-primary transition-colors truncate">{exercise.name}</h3>
-          <p className="text-xs text-muted-foreground">Klik om details te wijzigen</p>
-        </button>
-      </div>
+  const thumbnail = exercise.imageUrl ? (
+    <img
+      src={exercise.imageUrl}
+      alt={exercise.name}
+      className="h-12 w-12 rounded-md object-cover shrink-0"
+    />
+  ) : (
+    <div className="h-12 w-12 rounded-md bg-muted flex items-center justify-center shrink-0">
+      <Dumbbell className="h-5 w-5 text-muted-foreground/50" />
+    </div>
+  );
 
+  const title = (
+    <button type="button" onClick={onEdit} className="min-w-0 text-left group">
+      <h3 className="font-bold text-sm group-hover:text-primary transition-colors truncate">{exercise.name}</h3>
+      <p className="text-xs text-muted-foreground">Klik om details te wijzigen</p>
+    </button>
+  );
+
+  const actions = (
+    <div className="flex gap-1 shrink-0">
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8"
+        onClick={onMoveUp}
+        disabled={isFirst}
+        title="Omhoog"
+      >
+        <ArrowUp className="h-3.5 w-3.5" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8"
+        onClick={onMoveDown}
+        disabled={isLast}
+        title="Omlaag"
+      >
+        <ArrowDown className="h-3.5 w-3.5" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8 text-destructive hover:text-destructive"
+        onClick={onDelete}
+        title="Verwijderen"
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+      </Button>
+    </div>
+  );
+
+  const fields = (
+    <>
       <InlineExerciseField
         label="Sets"
         defaultValue={String(exercise.sets || "")}
@@ -1875,40 +1915,38 @@ function ExerciseRow({
         label="Notities"
         defaultValue={exercise.notes || ""}
         onCommit={(value) => onUpdate({ notes: value })}
+        className={compactFields ? "col-span-2 md:col-span-4" : ""}
       />
+    </>
+  );
+
+  if (compactFields) {
+    return (
+      <div className="px-4 py-3 space-y-3">
+        <div className="flex items-start gap-3 min-w-0">
+          {thumbnail}
+          <div className="flex-1 min-w-0">{title}</div>
+          {actions}
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 rounded-md border border-border/70 bg-background p-3">
+          {fields}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="px-4 py-3 grid gap-3 lg:grid-cols-[minmax(210px,1.2fr)_72px_120px_92px_minmax(180px,1fr)_auto] lg:items-center">
+      {/* Thumbnail */}
+      <div className="flex items-center gap-3 min-w-0">
+        {thumbnail}
+        {title}
+      </div>
+
+      {fields}
 
       {/* Actions */}
-      <div className="flex gap-1 shrink-0">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          onClick={onMoveUp}
-          disabled={isFirst}
-          title="Omhoog"
-        >
-          <ArrowUp className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          onClick={onMoveDown}
-          disabled={isLast}
-          title="Omlaag"
-        >
-          <ArrowDown className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 text-destructive hover:text-destructive"
-          onClick={onDelete}
-          title="Verwijderen"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </Button>
-      </div>
+      {actions}
     </div>
   );
 }
@@ -1918,14 +1956,16 @@ function InlineExerciseField({
   defaultValue,
   onCommit,
   type = "text",
+  className = "",
 }: {
   label: string;
   defaultValue: string;
   onCommit: (value: string) => void;
   type?: string;
+  className?: string;
 }) {
   return (
-    <label className="space-y-1">
+    <label className={`space-y-1 min-w-0 ${className}`}>
       <span className="text-[10px] font-bold uppercase text-muted-foreground">{label}</span>
       <Input
         type={type}

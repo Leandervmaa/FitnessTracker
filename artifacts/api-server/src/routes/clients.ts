@@ -48,11 +48,32 @@ router.get("/", async (req, res) => {
     const clients = await db.select().from(clientsTable);
     const users = await db.select().from(usersTable).where(eq(usersTable.role, "client"));
     const userByClient = new Map(users.map((u) => [u.clientId, publicUser(u)]));
+    const frontPhotos = await db
+      .select({
+        id: progressPhotosTable.id,
+        clientId: progressPhotosTable.clientId,
+        uploadedAt: progressPhotosTable.uploadedAt,
+      })
+      .from(progressPhotosTable)
+      .where(eq(progressPhotosTable.angle, "front"));
+    const latestFrontPhotoByClient = new Map<string, { id: number; uploadedAt: Date }>();
+
+    for (const photo of frontPhotos) {
+      if (!photo.clientId) continue;
+      const current = latestFrontPhotoByClient.get(photo.clientId);
+      if (!current || photo.uploadedAt > current.uploadedAt) {
+        latestFrontPhotoByClient.set(photo.clientId, {
+          id: photo.id,
+          uploadedAt: photo.uploadedAt,
+        });
+      }
+    }
 
     return void res.json(
       clients.map((client) => ({
         ...client,
         user: userByClient.get(client.id) ?? null,
+        avatarPhotoId: latestFrontPhotoByClient.get(client.id)?.id ?? null,
       })),
     );
   } catch (err) {
